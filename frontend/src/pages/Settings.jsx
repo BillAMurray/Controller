@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2, Save, Code2, X, Plus, RefreshCw } from 'lucide-react'
 import { api } from '../api'
@@ -16,7 +16,7 @@ function ListEditor({ label, values, onChange, placeholder }) {
     <div className="mb-4">
       <label className="block text-sm text-gray-300 mb-1">{label}</label>
       {values.map((v, i) => (
-        <div key={i} className="flex gap-2 mb-1">
+        <div key={`${i}-${values.length}`} className="flex gap-2 mb-1">
           <input
             value={v}
             onChange={e => update(i, e.target.value)}
@@ -34,14 +34,21 @@ function ListEditor({ label, values, onChange, placeholder }) {
 // ─── YAML View Modal ──────────────────────────────────────────────────────────
 function YamlModal({ templateId, templateName, onClose }) {
   const [content, setContent] = useState('')
+  const [loading, setLoading] = useState(true)
   const [copied,  setCopied]  = useState(false)
+  const copyTimer = useRef(null)
   useEffect(() => {
-    api.getCompose(templateId).then(d => setContent(d?.content || '')).catch(() => setContent(''))
+    setLoading(true)
+    api.getCompose(templateId)
+      .then(d => setContent(d?.content || ''))
+      .catch(() => setContent(''))
+      .finally(() => setLoading(false))
   }, [templateId])
+  useEffect(() => () => clearTimeout(copyTimer.current), [])
   function copy() {
     navigator.clipboard.writeText(content)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    copyTimer.current = setTimeout(() => setCopied(false), 2000)
   }
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -49,13 +56,16 @@ function YamlModal({ templateId, templateName, onClose }) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <span className="text-sm font-semibold text-gray-200">Generated YAML — {templateName}</span>
           <div className="flex gap-2">
-            <button onClick={copy} className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded text-white">
+            <button onClick={copy} disabled={loading} className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded text-white disabled:opacity-50">
               {copied ? 'Copied!' : 'Copy'}
             </button>
             <button onClick={onClose} className="p-1 text-gray-400 hover:text-white"><X size={16} /></button>
           </div>
         </div>
-        <pre className="flex-1 overflow-auto p-4 text-green-400 text-xs font-mono whitespace-pre">{content}</pre>
+        {loading
+          ? <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Loading…</div>
+          : <pre className="flex-1 overflow-auto p-4 text-green-400 text-xs font-mono whitespace-pre">{content}</pre>
+        }
       </div>
     </div>
   )
@@ -118,7 +128,10 @@ function AddServiceDialog({ onClose, onAdded }) {
 
   function deriveName(img) {
     // "ghcr.io/open-webui/open-webui:main" → "open-webui"
-    const base = img.split('/').pop().split(':')[0]
+    // Strip digest (@sha256:...) before splitting on ':'
+    const noDigest = img.replace(/@[^:/]+:[^:/]+$/, '')
+    const base = noDigest.split('/').pop().split(':')[0]
+      .replace(/[^a-z0-9_-]/gi, '_') || 'service'
     return base
   }
 
@@ -143,6 +156,7 @@ function AddServiceDialog({ onClose, onAdded }) {
       onAdded(s)
     } catch (err) {
       setError(err.message)
+    } finally {
       setPulling(false)
     }
   }
@@ -199,6 +213,9 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
   const [saved,      setSaved]      = useState(false)
   const [error,      setError]      = useState(null)
   const [showYaml,   setShowYaml]   = useState(false)
+  const savedTimer = useRef(null)
+
+  useEffect(() => () => clearTimeout(savedTimer.current), [])
 
   useEffect(() => {
     setName(template.name)
@@ -227,7 +244,7 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
       await api.updateTemplate(template.id, { name: name.trim(), network, serviceIds })
       onSaved()
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      savedTimer.current = setTimeout(() => setSaved(false), 2000)
     } catch (e) {
       setError(e.message)
     }
@@ -388,6 +405,9 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
   const [unavailable, setUnavailable] = useState(service.unavailable || false)
   const [saved,       setSaved]       = useState(false)
   const [error,       setError]       = useState(null)
+  const savedTimer = useRef(null)
+
+  useEffect(() => () => clearTimeout(savedTimer.current), [])
 
   useEffect(() => {
     setName(service.name);        setImage(service.image)
@@ -404,7 +424,7 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
       await api.updateService(service.id, { name: name.trim(), image: image.trim(), ports, volumes, environment, restart, unavailable })
       onSaved()
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      savedTimer.current = setTimeout(() => setSaved(false), 2000)
     } catch (e) { setError(e.message) }
   }
 
@@ -623,7 +643,9 @@ function PublishDirInline() {
   const [publishDir, setPublishDir] = useState('')
   const [saved,      setSaved]      = useState(false)
   const [error,      setError]      = useState(null)
+  const savedTimer = useRef(null)
 
+  useEffect(() => () => clearTimeout(savedTimer.current), [])
   useEffect(() => { if (settings) setPublishDir(settings.publishDir || '') }, [settings])
 
   async function save() {
@@ -632,7 +654,7 @@ function PublishDirInline() {
       await api.saveSettings({ publishDir })
       qc.invalidateQueries({ queryKey: ['settings'] })
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      savedTimer.current = setTimeout(() => setSaved(false), 2000)
     } catch (e) { setError(e.message) }
   }
 
