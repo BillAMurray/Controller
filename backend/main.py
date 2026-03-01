@@ -152,6 +152,8 @@ def pull_all():
     errors     = []
     any_success = False
     for t in templates:
+        if not t.get("serviceIds"):
+            continue
         services = [data_store.get_service(sid) for sid in t.get("serviceIds", [])]
         content  = yaml_generator.generate_compose(t, [s for s in services if s])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False, encoding="utf-8") as f:

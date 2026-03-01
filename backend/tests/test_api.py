@@ -1,8 +1,6 @@
 import pytest
-import tempfile
-from pathlib import Path
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 @pytest.fixture
