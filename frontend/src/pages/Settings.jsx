@@ -251,7 +251,7 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
     )
     return !s.unavailable && imagePresent
   })
-  const selectedButGone = (template.serviceIds || []).filter(sid => {
+  const selectedButGone = serviceIds.filter(sid => {
     const svc = allServices.find(s => s.id === sid)
     if (!svc) return true
     const imagePresent = localImages.some(li =>
