@@ -43,7 +43,10 @@ async def upload_template(name: str = "My Template", file: UploadFile = File(...
 
 @app.put("/api/templates/{template_id}")
 def rename_template(template_id: str, body: dict):
-    t = data_store.update_template(template_id, name=body.get("name", ""))
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(422, "name is required")
+    t = data_store.update_template(template_id, name=name)
     if not t:
         raise HTTPException(404, "Template not found")
     return t
@@ -72,7 +75,10 @@ def get_compose(template_id: str):
 def save_compose(template_id: str, body: dict):
     if not data_store.get_template(template_id):
         raise HTTPException(404, "Template not found")
-    data_store.write_compose(template_id, body.get("content", ""))
+    content = body.get("content", "")
+    if not content.strip():
+        raise HTTPException(400, "content must not be empty")
+    data_store.write_compose(template_id, content)
     return {"ok": True}
 
 
@@ -103,6 +109,8 @@ def deploy_template(template_id: str):
 @app.post("/api/templates/{template_id}/stop")
 def stop_template(template_id: str):
     settings = data_store.load_settings()
+    if settings.get("activeTemplateId") != template_id:
+        raise HTTPException(409, "Template is not the active deployment")
     publish_dir = settings.get("publishDir", "")
     if not publish_dir or not Path(publish_dir).exists():
         raise HTTPException(400, "Publish directory not configured")
@@ -121,9 +129,11 @@ def stop_template(template_id: str):
 
 @app.post("/api/templates/{template_id}/pull")
 def pull_template(template_id: str):
+    if not data_store.get_template(template_id):
+        raise HTTPException(404, "Template not found")
     compose_path = data_store.get_compose_path(template_id)
     if not compose_path.exists():
-        raise HTTPException(404, "No compose file for this template")
+        raise HTTPException(400, "No compose file for this template")
     ok, msg = docker_ops.compose_pull(str(compose_path))
     if not ok:
         raise HTTPException(500, f"docker compose pull failed: {msg}")
@@ -135,18 +145,21 @@ def pull_template(template_id: str):
 def pull_all():
     templates = data_store.load_templates()
     errors = []
+    any_success = False
     for t in templates:
         compose_path = data_store.get_compose_path(t["id"])
         if compose_path.exists():
             ok, msg = docker_ops.compose_pull(str(compose_path))
             if ok:
+                any_success = True
                 data_store.update_template(t["id"], lastPulled=date.today().isoformat())
             else:
                 errors.append({"template": t["name"], "error": msg})
-    settings = data_store.load_settings()
-    settings["lastPulledAll"] = date.today().isoformat()
-    data_store.save_settings(settings)
-    return {"ok": True, "errors": errors}
+    if any_success:
+        settings = data_store.load_settings()
+        settings["lastPulledAll"] = date.today().isoformat()
+        data_store.save_settings(settings)
+    return {"ok": len(errors) == 0, "errors": errors}
 
 
 # ── Containers ────────────────────────────────────────────────────────────────
@@ -177,6 +190,7 @@ def get_settings():
 @app.put("/api/settings")
 def update_settings(body: dict):
     settings = data_store.load_settings()
-    settings.update(body)
+    if "publishDir" in body:
+        settings["publishDir"] = body["publishDir"]
     data_store.save_settings(settings)
     return settings
