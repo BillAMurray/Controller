@@ -54,6 +54,7 @@ def create_template(name: str) -> dict:
 
 
 def update_template(template_id: str, **kwargs) -> dict | None:
+    kwargs.pop("id", None)
     templates = load_templates()
     for t in templates:
         if t["id"] == template_id:
@@ -108,6 +109,7 @@ def create_service(name: str, image: str) -> dict:
 
 
 def update_service(service_id: str, **kwargs) -> dict | None:
+    kwargs.pop("id", None)
     services = load_services()
     for s in services:
         if s["id"] == service_id:
