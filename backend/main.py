@@ -1,11 +1,13 @@
+import tempfile
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import data_store
 import docker_ops
+import yaml_generator
 
 app = FastAPI()
 
@@ -17,16 +19,17 @@ app.add_middleware(
 )
 
 
-# ── Status ────────────────────────────────────────────────────────────────────
+# ── Status ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/status")
 def get_status():
-    containers = docker_ops.list_containers()
-    stats = docker_ops.system_stats()
-    return {**stats, "runningCount": len(containers), "containers": containers}
+    containers   = docker_ops.list_containers()
+    stats        = docker_ops.system_stats()
+    local_images = docker_ops.list_images()
+    return {**stats, "runningCount": len(containers), "containers": containers, "localImages": local_images}
 
 
-# ── Templates ─────────────────────────────────────────────────────────────────
+# ── Templates ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/templates")
 def list_templates():
@@ -34,19 +37,24 @@ def list_templates():
 
 
 @app.post("/api/templates")
-async def upload_template(name: str = "My Template", file: UploadFile = File(...)):
-    content = (await file.read()).decode("utf-8")
-    template = data_store.create_template(name)
-    data_store.write_compose(template["id"], content)
-    return template
-
-
-@app.put("/api/templates/{template_id}")
-def rename_template(template_id: str, body: dict):
+def create_template_route(body: dict):
     name = body.get("name", "").strip()
     if not name:
         raise HTTPException(422, "name is required")
-    t = data_store.update_template(template_id, name=name)
+    return data_store.create_template(name)
+
+
+@app.put("/api/templates/{template_id}")
+def update_template_route(template_id: str, body: dict):
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(422, "name is required")
+    kwargs: dict = {"name": name}
+    if "network" in body:
+        kwargs["network"] = body["network"]
+    if "serviceIds" in body:
+        kwargs["serviceIds"] = body["serviceIds"]
+    t = data_store.update_template(template_id, **kwargs)
     if not t:
         raise HTTPException(404, "Template not found")
     return t
@@ -65,33 +73,28 @@ def remove_template(template_id: str):
 
 @app.get("/api/templates/{template_id}/compose")
 def get_compose(template_id: str):
-    content = data_store.read_compose(template_id)
-    if content is None:
-        raise HTTPException(404, "Compose file not found")
-    return {"content": content}
-
-
-@app.put("/api/templates/{template_id}/compose")
-def save_compose(template_id: str, body: dict):
-    if not data_store.get_template(template_id):
-        raise HTTPException(404, "Template not found")
-    content = body.get("content", "")
-    if not content.strip():
-        raise HTTPException(400, "content must not be empty")
-    data_store.write_compose(template_id, content)
-    return {"ok": True}
-
-
-# ── Deploy / Stop ─────────────────────────────────────────────────────────────
-
-@app.post("/api/templates/{template_id}/deploy")
-def deploy_template(template_id: str):
     template = data_store.get_template(template_id)
     if not template:
         raise HTTPException(404, "Template not found")
-    compose_content = data_store.read_compose(template_id)
-    if not compose_content:
-        raise HTTPException(400, "No compose file for this template")
+    services = [data_store.get_service(sid) for sid in template.get("serviceIds", [])]
+    services = [s for s in services if s]
+    content = yaml_generator.generate_compose(template, services)
+    return {"content": content}
+
+
+# ── Deploy / Stop ──────────────────────────────────────────────────────────────
+
+def _get_generated_yaml(template_id: str) -> str:
+    template = data_store.get_template(template_id)
+    if not template:
+        raise HTTPException(404, "Template not found")
+    services = [data_store.get_service(sid) for sid in template.get("serviceIds", [])]
+    return yaml_generator.generate_compose(template, [s for s in services if s])
+
+
+@app.post("/api/templates/{template_id}/deploy")
+def deploy_template(template_id: str):
+    compose_content = _get_generated_yaml(template_id)
     settings = data_store.load_settings()
     publish_dir = settings.get("publishDir", "")
     if not publish_dir or not Path(publish_dir).exists():
@@ -125,16 +128,18 @@ def stop_template(template_id: str):
     return {"ok": True}
 
 
-# ── Pull ──────────────────────────────────────────────────────────────────────
+# ── Pull ───────────────────────────────────────────────────────────────────────
 
 @app.post("/api/templates/{template_id}/pull")
 def pull_template(template_id: str):
-    if not data_store.get_template(template_id):
-        raise HTTPException(404, "Template not found")
-    compose_path = data_store.get_compose_path(template_id)
-    if not compose_path.exists():
-        raise HTTPException(400, "No compose file for this template")
-    ok, msg = docker_ops.compose_pull(str(compose_path))
+    compose_content = _get_generated_yaml(template_id)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False, encoding="utf-8") as f:
+        f.write(compose_content)
+        tmp_path = f.name
+    try:
+        ok, msg = docker_ops.compose_pull(tmp_path)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
     if not ok:
         raise HTTPException(500, f"docker compose pull failed: {msg}")
     data_store.update_template(template_id, lastPulled=date.today().isoformat())
@@ -143,18 +148,24 @@ def pull_template(template_id: str):
 
 @app.post("/api/pull-all")
 def pull_all():
-    templates = data_store.load_templates()
-    errors = []
+    templates  = data_store.load_templates()
+    errors     = []
     any_success = False
     for t in templates:
-        compose_path = data_store.get_compose_path(t["id"])
-        if compose_path.exists():
-            ok, msg = docker_ops.compose_pull(str(compose_path))
-            if ok:
-                any_success = True
-                data_store.update_template(t["id"], lastPulled=date.today().isoformat())
-            else:
-                errors.append({"template": t["name"], "error": msg})
+        services = [data_store.get_service(sid) for sid in t.get("serviceIds", [])]
+        content  = yaml_generator.generate_compose(t, [s for s in services if s])
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False, encoding="utf-8") as f:
+            f.write(content)
+            tmp_path = f.name
+        try:
+            ok, msg = docker_ops.compose_pull(tmp_path)
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+        if ok:
+            any_success = True
+            data_store.update_template(t["id"], lastPulled=date.today().isoformat())
+        else:
+            errors.append({"template": t["name"], "error": msg})
     if any_success:
         settings = data_store.load_settings()
         settings["lastPulledAll"] = date.today().isoformat()
@@ -162,7 +173,51 @@ def pull_all():
     return {"ok": len(errors) == 0, "errors": errors}
 
 
-# ── Containers ────────────────────────────────────────────────────────────────
+# ── Services ───────────────────────────────────────────────────────────────────
+
+@app.get("/api/services")
+def list_services():
+    return data_store.load_services()
+
+
+@app.post("/api/services")
+def create_service_route(body: dict):
+    name  = body.get("name", "").strip()
+    image = body.get("image", "").strip()
+    if not name or not image:
+        raise HTTPException(422, "name and image are required")
+    return data_store.create_service(name, image)
+
+
+@app.put("/api/services/{service_id}")
+def update_service_route(service_id: str, body: dict):
+    allowed = {"name", "image", "ports", "volumes", "environment", "restart", "unavailable"}
+    kwargs  = {k: v for k, v in body.items() if k in allowed}
+    s = data_store.update_service(service_id, **kwargs)
+    if not s:
+        raise HTTPException(404, "Service not found")
+    return s
+
+
+@app.delete("/api/services/{service_id}")
+def delete_service_route(service_id: str):
+    if not data_store.delete_service(service_id):
+        raise HTTPException(404, "Service not found")
+    return {"ok": True}
+
+
+@app.post("/api/services/{service_id}/pull")
+def pull_service_route(service_id: str):
+    service = data_store.get_service(service_id)
+    if not service:
+        raise HTTPException(404, "Service not found")
+    ok, msg = docker_ops.image_pull(service["image"])
+    if not ok:
+        raise HTTPException(500, f"docker pull failed: {msg}")
+    return {"ok": True}
+
+
+# ── Containers ─────────────────────────────────────────────────────────────────
 
 @app.post("/api/containers/{name}/start")
 def start_container(name: str):
@@ -180,7 +235,7 @@ def stop_container(name: str):
     return {"ok": True}
 
 
-# ── Settings ──────────────────────────────────────────────────────────────────
+# ── Settings ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/settings")
 def get_settings():
