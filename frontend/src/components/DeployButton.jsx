@@ -48,7 +48,7 @@ export default function DeployButton({ templateId, activeTemplateId, runningCont
         >
           {loading ? 'Working\u2026' : label}
         </button>
-        {error && <span className="text-red-400 text-xs max-w-xs truncate">{error}</span>}
+        {error && <span className="text-red-400 text-xs max-w-xs truncate" title={error}>{error}</span>}
       </div>
       {showModal && (
         <WarningModal

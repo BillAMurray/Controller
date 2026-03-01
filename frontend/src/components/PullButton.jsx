@@ -5,7 +5,9 @@ import { api } from '../api'
 
 function fmtDate(d) {
   if (!d) return 'Never'
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const parsed = new Date(d)
+  if (isNaN(parsed.getTime())) return 'Unknown'
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 export default function PullButton({ templateId, lastPulled, lastPulledAll }) {

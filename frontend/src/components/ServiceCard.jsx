@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, Globe, Server, Box, HardDrive, Cpu, Network } from 'lucide-react'
+import { Database, Globe, Server, Box, Cpu, Network } from 'lucide-react'
 
 const iconMap = {
   postgres: Database, mysql: Database, redis: Database, mongo: Database,
@@ -21,10 +21,13 @@ export default function ServiceCard({ service, runningContainers, onToggle }) {
     c => c.name === service.containerName || c.name === `/${service.containerName}`
   )
   const [toggling, setToggling] = useState(false)
+  const [toggleError, setToggleError] = useState(null)
 
   async function handleToggle() {
     setToggling(true)
+    setToggleError(null)
     try { await onToggle(service.containerName, isRunning) }
+    catch (e) { setToggleError(e.message) }
     finally { setToggling(false) }
   }
 
@@ -49,6 +52,7 @@ export default function ServiceCard({ service, runningContainers, onToggle }) {
           }`} />
         </button>
         {!isRunning && <span className="text-xs text-gray-500 uppercase tracking-wider">OFF</span>}
+        {toggleError && <span className="text-red-400 text-xs truncate max-w-[120px]" title={toggleError}>Error</span>}
       </div>
     </div>
   )
