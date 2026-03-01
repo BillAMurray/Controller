@@ -6,17 +6,29 @@ export function parseServices(yamlText) {
   let current = null
 
   for (const line of lines) {
-    if (/^services\s*:/.test(line)) { inServices = true; continue }
-    if (inServices && /^  (\w[\w-]*):\s*$/.test(line)) {
-      const name = line.trim().replace(':', '')
-      current = { name, image: '', containerName: name }
-      services.push(current)
+    // New top-level key — track whether we're in the services block
+    if (/^\S/.test(line)) {
+      inServices = /^services\s*:/.test(line)
+      current = null
+      continue
     }
+
+    // Two-space-indented service name (only inside services block)
+    if (inServices) {
+      const svcMatch = line.match(/^  (\w[\w-]*):\s*$/)
+      if (svcMatch) {
+        current = { name: svcMatch[1], image: '', containerName: svcMatch[1] }
+        services.push(current)
+        continue
+      }
+    }
+
+    // Capture image and container_name for the current service
     if (current) {
       const img = line.match(/^\s+image:\s*(.+)/)
-      if (img) current.image = img[1].trim()
+      if (img) current.image = img[1].trim().replace(/^["']|["']$/g, '')
       const cn = line.match(/^\s+container_name:\s*(.+)/)
-      if (cn) current.containerName = cn[1].trim()
+      if (cn) current.containerName = cn[1].trim().replace(/^["']|["']$/g, '')
     }
   }
   return services

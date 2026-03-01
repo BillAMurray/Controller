@@ -33,6 +33,7 @@ export default function Dashboard({ onSettings }) {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['status'] })
       qc.invalidateQueries({ queryKey: ['settings'] })
+      qc.invalidateQueries({ queryKey: ['templates'] })
     },
   })
 
@@ -42,7 +43,7 @@ export default function Dashboard({ onSettings }) {
     qc.invalidateQueries({ queryKey: ['status'] })
   }
 
-  const canStop = !!settings?.activeTemplateId
+  const canStop = settings?.activeTemplateId === activeId
 
   return (
     <div className="flex flex-col h-screen">
