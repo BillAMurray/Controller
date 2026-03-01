@@ -104,3 +104,11 @@ def test_generate_skips_host_path_volumes_from_top_level():
     t = _template()
     parsed = yaml.safe_load(yaml_generator.generate_compose(t, [svc]))
     assert not parsed.get("volumes")
+
+
+def test_generate_skips_windows_drive_letter_volumes():
+    """Windows-style paths like C:\\data:/container should not become named volumes."""
+    svc = _service(volumes=["C:\\data:/container", "C:/other:/path"])
+    t = _template()
+    parsed = yaml.safe_load(yaml_generator.generate_compose(t, [svc]))
+    assert not parsed.get("volumes")

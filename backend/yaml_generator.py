@@ -6,13 +6,19 @@ def generate_compose(template: dict, services: list[dict]) -> str:
     network      = template.get("network", {})
     network_name = (network.get("name") or "appnet").strip() or "appnet"
 
-    # Collect unique named volumes (skip bind mounts: paths starting with . or /)
+    # Collect unique named volumes (skip bind mounts: paths starting with . or /,
+    # or Windows drive letters like C:\ or C:/)
     all_volumes: dict = {}
     for svc in services:
         for vol in svc.get("volumes", []):
             parts = str(vol).split(":")
             host = parts[0]
-            if host and not host.startswith(".") and not host.startswith("/"):
+            is_bind = (
+                host.startswith(".")
+                or host.startswith("/")
+                or (len(host) == 1 and host.isalpha())  # Windows drive letter, e.g. C
+            )
+            if host and not is_bind:
                 all_volumes[host] = {}
 
     compose: dict = {
