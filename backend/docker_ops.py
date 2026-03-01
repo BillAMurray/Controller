@@ -45,6 +45,28 @@ def container_stop(name: str) -> tuple[bool, str]:
     return code == 0, err if code != 0 else out
 
 
+def list_images() -> list[str]:
+    code, out, err = _run(["docker", "images", "--format", "{{json .}}"])
+    if code != 0 or not out.strip():
+        return []
+    images = []
+    for line in out.strip().splitlines():
+        try:
+            img = json.loads(line)
+            repo = img.get("Repository", "")
+            tag  = img.get("Tag", "")
+            if repo and repo != "<none>":
+                images.append(f"{repo}:{tag}" if tag and tag != "<none>" else repo)
+        except json.JSONDecodeError:
+            continue
+    return images
+
+
+def image_pull(image: str) -> tuple[bool, str]:
+    code, out, err = _run(["docker", "pull", image])
+    return code == 0, err if code != 0 else out
+
+
 def list_containers() -> list[dict]:
     code, out, err = _run(["docker", "ps", "--format", "{{json .}}"])
     if code != 0:

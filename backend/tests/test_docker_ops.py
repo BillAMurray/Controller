@@ -100,3 +100,29 @@ def test_run_docker_not_found():
         ok, msg = docker_ops.compose_up("/some/docker-compose.yml")
     assert ok is False
     assert "not found" in msg
+
+
+def test_list_images_returns_strings():
+    line = '{"Repository":"ollama/ollama","Tag":"latest","ID":"abc123","Size":"6.5GB","CreatedAt":"2024-01-01"}'
+    with patch("subprocess.run", return_value=_mock_run(0, line + "\n")):
+        images = docker_ops.list_images()
+    assert images == ["ollama/ollama:latest"]
+
+
+def test_list_images_empty_on_failure():
+    with patch("subprocess.run", return_value=_mock_run(1, "", "daemon not running")):
+        images = docker_ops.list_images()
+    assert images == []
+
+
+def test_image_pull_success():
+    with patch("subprocess.run", return_value=_mock_run(0, "pulled")):
+        ok, msg = docker_ops.image_pull("ollama/ollama:latest")
+    assert ok is True
+
+
+def test_image_pull_failure():
+    with patch("subprocess.run", return_value=_mock_run(1, "", "not found")):
+        ok, msg = docker_ops.image_pull("bad/image:xyz")
+    assert ok is False
+    assert "not found" in msg
