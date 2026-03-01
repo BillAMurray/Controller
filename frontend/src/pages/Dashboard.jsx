@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Settings } from 'lucide-react'
 import { api } from '../api'
-import { parseServices } from '../utils/parseCompose'
 import StatsBar from '../components/StatsBar'
 import ServiceCard from '../components/ServiceCard'
 import DeployButton from '../components/DeployButton'
@@ -12,21 +11,19 @@ export default function Dashboard({ onSettings }) {
   const qc = useQueryClient()
   const [selectedId, setSelectedId] = useState(null)
 
-  const { data: templates = [] } = useQuery({ queryKey: ['templates'], queryFn: api.getTemplates })
-  const { data: status }         = useQuery({ queryKey: ['status'],    queryFn: api.getStatus, refetchInterval: 5000 })
-  const { data: settings }       = useQuery({ queryKey: ['settings'],  queryFn: api.getSettings })
+  const { data: templates = [] }    = useQuery({ queryKey: ['templates'], queryFn: api.getTemplates })
+  const { data: status }            = useQuery({ queryKey: ['status'],    queryFn: api.getStatus, refetchInterval: 5000 })
+  const { data: settings }          = useQuery({ queryKey: ['settings'],  queryFn: api.getSettings })
+  const { data: allServices = [] }  = useQuery({ queryKey: ['services'],  queryFn: api.getServices })
 
   const activeId       = selectedId || templates[0]?.id
   const activeTemplate = templates.find(t => t.id === activeId)
 
-  const { data: composeData } = useQuery({
-    queryKey:  ['compose', activeId],
-    queryFn:   () => api.getCompose(activeId),
-    enabled:   !!activeId,
-  })
+  const localImages       = status?.localImages || []
+  const runningContainers = status?.containers  || []
 
-  const services          = parseServices(composeData?.content)
-  const runningContainers = status?.containers || []
+  const serviceIds     = activeTemplate?.serviceIds || []
+  const activeServices = allServices.filter(s => serviceIds.includes(s.id))
 
   const stopMutation = useMutation({
     mutationFn: () => api.stopTemplate(activeId),
@@ -54,7 +51,7 @@ export default function Dashboard({ onSettings }) {
           <h1 className="text-xl font-bold text-white">Controller</h1>
         </div>
         <StatsBar status={status} />
-        <button onClick={onSettings} className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+        <button onClick={() => onSettings('templates')} className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
           <Settings size={20} />
         </button>
       </header>
@@ -94,21 +91,32 @@ export default function Dashboard({ onSettings }) {
 
       {/* Service canvas */}
       <div className="flex-1 overflow-auto p-6">
-        {services.length === 0 ? (
+        {activeServices.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-2">
-            <p>No services defined.</p>
-            <p className="text-sm">Open Settings to edit the YAML for this template.</p>
+            <p>No services in this template.</p>
+            <p className="text-sm">
+              <button onClick={() => onSettings('templates')} className="text-blue-400 hover:underline">
+                Open Settings
+              </button>{' '}
+              to add services.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {services.map(s => (
-              <ServiceCard
-                key={s.name}
-                service={s}
-                runningContainers={runningContainers}
-                onToggle={handleToggleContainer}
-              />
-            ))}
+            {activeServices.map(s => {
+              const imageMissing = !localImages.some(li =>
+                li === s.image || li.split(':')[0] === s.image.split(':')[0]
+              )
+              return (
+                <ServiceCard
+                  key={s.id}
+                  service={s}
+                  runningContainers={runningContainers}
+                  onToggle={handleToggleContainer}
+                  imageMissing={imageMissing}
+                />
+              )
+            })}
           </div>
         )}
       </div>

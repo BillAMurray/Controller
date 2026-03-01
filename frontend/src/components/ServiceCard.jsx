@@ -15,7 +15,7 @@ function getIcon(image = '') {
   return Server
 }
 
-export default function ServiceCard({ service, runningContainers, onToggle }) {
+export default function ServiceCard({ service, runningContainers, onToggle, imageMissing = false }) {
   const Icon = getIcon(service.image)
   const isRunning = runningContainers.some(
     c => c.name === service.containerName || c.name === `/${service.containerName}`
@@ -37,7 +37,12 @@ export default function ServiceCard({ service, runningContainers, onToggle }) {
         <div className="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center flex-shrink-0">
           <Icon size={22} className="text-blue-400" />
         </div>
-        <span className="font-semibold text-white truncate">{service.name}</span>
+        <div className="flex flex-col min-w-0">
+          <span className="font-semibold text-white truncate">{service.name}</span>
+          {imageMissing && (
+            <span className="text-xs text-yellow-500 mt-0.5">image not found locally</span>
+          )}
+        </div>
       </div>
       <div className="flex items-center justify-between">
         <button
