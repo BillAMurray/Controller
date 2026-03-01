@@ -1,0 +1,12 @@
+{
+  "name": "controller",
+  "private": true,
+  "scripts": {
+    "start": "concurrently --kill-others-on-fail --names \"api,ui\" --prefix-colors \"blue,green\" \"npm run start:api\" \"npm run start:ui\"",
+    "start:api": "cd backend && venv\\Scripts\\uvicorn main:app --reload --port 8025",
+    "start:ui": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
