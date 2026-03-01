@@ -12,7 +12,10 @@ export default function Settings({ onBack }) {
   const [selectedId,   setSelectedId]   = useState(null)
   const [templateName, setTemplateName] = useState('')
   const [yamlContent,  setYamlContent]  = useState('')
-  const [saved,        setSaved]        = useState(false)
+  const [appSaved,      setAppSaved]      = useState(false)
+  const [templateSaved, setTemplateSaved] = useState(false)
+  const [appError,      setAppError]      = useState(null)
+  const [templateError, setTemplateError] = useState(null)
 
   useEffect(() => { if (settings) setPublishDir(settings.publishDir || '') }, [settings])
 
@@ -22,33 +25,49 @@ export default function Settings({ onBack }) {
     if (!activeTemplate) return
     setSelectedId(activeTemplate.id)
     setTemplateName(activeTemplate.name)
-    api.getCompose(activeTemplate.id).then(d => setYamlContent(d?.content || ''))
+    api.getCompose(activeTemplate.id).then(d => setYamlContent(d?.content || '')).catch(() => setYamlContent(''))
   }, [activeTemplate?.id])
 
-  function flash() { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+  function flashApp()      { setAppSaved(true);      setTimeout(() => setAppSaved(false),      2000) }
+  function flashTemplate() { setTemplateSaved(true);  setTimeout(() => setTemplateSaved(false), 2000) }
 
   async function saveAppSettings() {
-    await api.saveSettings({ publishDir })
-    qc.invalidateQueries({ queryKey: ['settings'] })
-    flash()
+    setAppError(null)
+    try {
+      await api.saveSettings({ publishDir })
+      qc.invalidateQueries({ queryKey: ['settings'] })
+      flashApp()
+    } catch (e) {
+      setAppError(e.message)
+    }
   }
 
   async function saveTemplate() {
     if (!selectedId) return
-    await api.renameTemplate(selectedId, templateName)
-    await api.saveCompose(selectedId, yamlContent)
-    qc.invalidateQueries({ queryKey: ['templates'] })
-    qc.invalidateQueries({ queryKey: ['compose', selectedId] })
-    flash()
+    setTemplateError(null)
+    try {
+      await api.renameTemplate(selectedId, templateName)
+      await api.saveCompose(selectedId, yamlContent)
+      qc.invalidateQueries({ queryKey: ['templates'] })
+      qc.invalidateQueries({ queryKey: ['compose', selectedId] })
+      flashTemplate()
+    } catch (e) {
+      setTemplateError(e.message)
+    }
   }
 
   async function deleteTemplate() {
     if (!selectedId) return
     if (!confirm(`Delete "${templateName}"? This cannot be undone.`)) return
-    await api.deleteTemplate(selectedId)
-    qc.invalidateQueries({ queryKey: ['templates'] })
-    setSelectedId(null)
-    onBack()
+    setTemplateError(null)
+    try {
+      await api.deleteTemplate(selectedId)
+      qc.invalidateQueries({ queryKey: ['templates'] })
+      setSelectedId(null)
+      onBack()
+    } catch (e) {
+      setTemplateError(e.message)
+    }
   }
 
   function handleTemplateChange(id) {
@@ -56,7 +75,7 @@ export default function Settings({ onBack }) {
     const t = templates.find(t => t.id === id)
     if (t) {
       setTemplateName(t.name)
-      api.getCompose(id).then(d => setYamlContent(d?.content || ''))
+      api.getCompose(id).then(d => setYamlContent(d?.content || '')).catch(() => setYamlContent(''))
     }
   }
 
@@ -90,6 +109,7 @@ export default function Settings({ onBack }) {
                 <Save size={16} />
               </button>
             </div>
+            {appError && <p className="text-red-400 text-xs mt-1">{appError}</p>}
             <p className="text-xs text-gray-500 mt-1">
               docker compose commands run from this directory. The directory must already exist.
             </p>
@@ -138,9 +158,10 @@ export default function Settings({ onBack }) {
                     onClick={saveTemplate}
                     className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm font-semibold transition-colors"
                   >
-                    {saved ? 'Saved!' : <><Save size={14} /> Save Template</>}
+                    {templateSaved ? 'Saved!' : <><Save size={14} /> Save Template</>}
                   </button>
                 </div>
+                {templateError && <p className="text-red-400 text-xs mt-2">{templateError}</p>}
               </>
             )}
           </section>
