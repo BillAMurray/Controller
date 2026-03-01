@@ -104,7 +104,7 @@ export default function Dashboard({ onSettings }) {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeServices.map(s => {
-              const imageMissing = !localImages.some(li =>
+              const imageMissing = !!status && !localImages.some(li =>
                 li === s.image || li.split(':')[0] === s.image.split(':')[0]
               )
               return (

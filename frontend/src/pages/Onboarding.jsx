@@ -16,6 +16,7 @@ export default function Onboarding() {
       qc.invalidateQueries({ queryKey: ['templates'] })
     } catch (e) {
       setError(e.message)
+    } finally {
       setLoading(false)
     }
   }
