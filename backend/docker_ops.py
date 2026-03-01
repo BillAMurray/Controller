@@ -1,12 +1,20 @@
+import os
 import subprocess
 import json
 import psutil
 from pathlib import Path
 
 
-def _run(cmd: list[str], cwd: str = None) -> tuple[int, str, str]:
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
-    return result.returncode, result.stdout, result.stderr
+_DEFAULT_TIMEOUT = int(os.getenv("DOCKER_CMD_TIMEOUT", "300"))
+
+def _run(cmd: list[str], cwd: str | None = None, timeout: int = _DEFAULT_TIMEOUT) -> tuple[int, str, str]:
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout)
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return 1, "", f"Command timed out after {timeout}s: {' '.join(cmd)}"
+    except FileNotFoundError:
+        return 1, "", f"Executable not found: {cmd[0]}"
 
 
 def compose_up(compose_file: str) -> tuple[bool, str]:
@@ -39,7 +47,11 @@ def container_stop(name: str) -> tuple[bool, str]:
 
 def list_containers() -> list[dict]:
     code, out, err = _run(["docker", "ps", "--format", "{{json .}}"])
-    if code != 0 or not out.strip():
+    if code != 0:
+        import sys
+        print(f"[docker_ops] docker ps failed: {err.strip()}", file=sys.stderr)
+        return []
+    if not out.strip():
         return []
     containers = []
     for line in out.strip().splitlines():

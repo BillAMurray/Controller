@@ -1,3 +1,4 @@
+import subprocess
 from unittest.mock import patch, MagicMock
 import docker_ops
 
@@ -47,3 +48,55 @@ def test_system_stats_returns_numbers():
     assert stats["cpu"] == 12.5
     assert stats["memory"] == 38.0
     assert stats["disk"] == 64.0
+
+
+def test_compose_up_success_returns_stdout():
+    with patch("subprocess.run", return_value=_mock_run(0, "done")):
+        ok, msg = docker_ops.compose_up("/some/docker-compose.yml")
+    assert ok is True
+    assert msg == "done"
+
+
+def test_compose_down_success():
+    with patch("subprocess.run", return_value=_mock_run(0, "stopped")):
+        ok, msg = docker_ops.compose_down("/some/docker-compose.yml")
+    assert ok is True
+
+
+def test_compose_down_failure():
+    with patch("subprocess.run", return_value=_mock_run(1, "", "down error")):
+        ok, msg = docker_ops.compose_down("/some/docker-compose.yml")
+    assert ok is False
+    assert "down error" in msg
+
+
+def test_compose_pull_success():
+    with patch("subprocess.run", return_value=_mock_run(0, "pulled")):
+        ok, msg = docker_ops.compose_pull("/some/docker-compose.yml")
+    assert ok is True
+
+
+def test_container_start_success():
+    with patch("subprocess.run", return_value=_mock_run(0, "started")):
+        ok, msg = docker_ops.container_start("my_container")
+    assert ok is True
+
+
+def test_container_stop_success():
+    with patch("subprocess.run", return_value=_mock_run(0, "stopped")):
+        ok, msg = docker_ops.container_stop("my_container")
+    assert ok is True
+
+
+def test_run_timeout():
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="docker", timeout=300)):
+        ok, msg = docker_ops.compose_up("/some/docker-compose.yml")
+    assert ok is False
+    assert "timed out" in msg
+
+
+def test_run_docker_not_found():
+    with patch("subprocess.run", side_effect=FileNotFoundError()):
+        ok, msg = docker_ops.compose_up("/some/docker-compose.yml")
+    assert ok is False
+    assert "not found" in msg
