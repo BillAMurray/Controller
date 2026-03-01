@@ -8,24 +8,33 @@ export default function Onboarding() {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
 
   async function handleFile(file) {
+    if (loading) return
     setError(null)
+    setLoading(true)
     try {
       await api.uploadTemplate('My Template', file)
       qc.invalidateQueries({ queryKey: ['templates'] })
     } catch (e) {
       setError(e.message)
+    } finally {
+      setLoading(false)
     }
   }
 
   async function handleGetStarted() {
+    if (loading) return
     setError(null)
+    setLoading(true)
     try {
       await api.createEmptyTemplate('My Template')
       qc.invalidateQueries({ queryKey: ['templates'] })
     } catch (e) {
       setError(e.message)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -37,7 +46,7 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center gap-6 text-white">
+    <div className="relative min-h-screen bg-gray-900 flex flex-col items-center justify-center gap-6 text-white">
       <div
         className={`border-2 border-dashed rounded-lg p-12 w-96 text-center cursor-pointer transition-colors ${
           dragging ? 'border-blue-400 bg-blue-900/20' : 'border-gray-500 hover:border-gray-400'
@@ -61,10 +70,11 @@ export default function Onboarding() {
       <p className="text-gray-400">
         or, skip and click here to{' '}
         <button
-          onClick={handleGetStarted}
-          className="ml-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white"
+          onClick={(e) => { e.stopPropagation(); handleGetStarted() }}
+          disabled={loading}
+          className="ml-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 rounded text-white"
         >
-          Get Started
+          {loading ? 'Working…' : 'Get Started'}
         </button>
       </p>
       {error && <p className="text-red-400 text-sm">{error}</p>}
