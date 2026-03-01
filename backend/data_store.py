@@ -20,12 +20,12 @@ def load_templates() -> list[dict]:
     _ensure_dirs()
     if not TEMPLATES_FILE.exists():
         return []
-    return json.loads(TEMPLATES_FILE.read_text())
+    return json.loads(TEMPLATES_FILE.read_text(encoding="utf-8"))
 
 
 def save_templates(templates: list[dict]):
     _ensure_dirs()
-    TEMPLATES_FILE.write_text(json.dumps(templates, indent=2))
+    TEMPLATES_FILE.write_text(json.dumps(templates, indent=2), encoding="utf-8")
 
 
 def get_template(template_id: str) -> dict | None:
@@ -74,22 +74,22 @@ def get_compose_path(template_id: str) -> Path:
 
 def read_compose(template_id: str) -> str | None:
     path = get_compose_path(template_id)
-    return path.read_text() if path.exists() else None
+    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def write_compose(template_id: str, content: str):
     path = get_compose_path(template_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
 
 
 def load_settings() -> dict:
     _ensure_dirs()
     if not SETTINGS_FILE.exists():
         return {"publishDir": "", "activeTemplateId": None, "lastPulledAll": None}
-    return json.loads(SETTINGS_FILE.read_text())
+    return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
 
 
 def save_settings(settings: dict):
     _ensure_dirs()
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2))
+    SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")

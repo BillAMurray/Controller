@@ -30,6 +30,7 @@ def test_delete_template():
     t = data_store.create_template("To Delete")
     assert data_store.delete_template(t["id"]) is True
     assert data_store.get_template(t["id"]) is None
+    assert not (data_store.TEMPLATES_DIR / t["id"]).exists()
     assert data_store.delete_template(t["id"]) is False
 
 def test_write_and_read_compose():
