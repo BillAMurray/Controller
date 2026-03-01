@@ -119,12 +119,12 @@ function AddServiceDialog({ onClose, onAdded }) {
   const [image,       setImage]       = useState('')
   const [pulling,     setPulling]     = useState(false)
   const [error,       setError]       = useState(null)
-  const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.getStatus })
-  const { data: existingSvcs = [] }   = useQuery({ queryKey: ['services'], queryFn: api.getServices })
+  const { data: status, isLoading: statusLoading } = useQuery({ queryKey: ['status'], queryFn: api.getStatus })
+  const { data: existingSvcs = [] } = useQuery({ queryKey: ['services'], queryFn: api.getServices })
 
-  const localImages  = status?.localImages || []
-  const usedImages   = existingSvcs.map(s => s.image)
-  const suggestions  = localImages.filter(img => !usedImages.includes(img))
+  const localImages = status?.localImages || []
+  const usedImages  = existingSvcs.map(s => s.image)
+  const suggestions = localImages.filter(img => !usedImages.includes(img))
 
   function deriveName(img) {
     // "ghcr.io/open-webui/open-webui:main" → "open-webui"
@@ -172,7 +172,9 @@ function AddServiceDialog({ onClose, onAdded }) {
           placeholder="e.g. ollama/ollama:latest"
           className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono mb-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
-        {suggestions.length > 0 && (
+        {statusLoading ? (
+          <p className="text-xs text-gray-500 mb-3">Checking local images…</p>
+        ) : suggestions.length > 0 ? (
           <div className="mb-3">
             <p className="text-xs text-gray-400 mb-1">Local images not yet added:</p>
             <div className="max-h-32 overflow-auto space-y-1">
@@ -184,7 +186,7 @@ function AddServiceDialog({ onClose, onAdded }) {
               ))}
             </div>
           </div>
-        )}
+        ) : null}
         {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
         <p className="text-xs text-gray-500 mb-3">
           Image will be pulled automatically on first deploy if not available locally.
@@ -261,21 +263,18 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
     }
   }
 
-  // Partition services: available vs previously-selected-but-now-unavailable
-  const availableServices = allServices.filter(s => {
-    const imagePresent = localImages.some(li =>
-      li === s.image || li.split(':')[0] === s.image.split(':')[0]
-    )
-    return !s.unavailable && imagePresent
-  })
-  const selectedButGone = serviceIds.filter(sid => {
-    const svc = allServices.find(s => s.id === sid)
-    if (!svc) return true
-    const imagePresent = localImages.some(li =>
-      li === svc.image || li.split(':')[0] === svc.image.split(':')[0]
-    )
-    return svc.unavailable || !imagePresent
-  }).map(sid => allServices.find(s => s.id === sid)?.name || sid)
+  // All non-unavailable services are eligible; imagePresent is a visual indicator only
+  const availableServices = allServices.filter(s => !s.unavailable)
+  const imagePresent = (svc) => localImages.some(li =>
+    li === svc.image || li.split(':')[0] === svc.image.split(':')[0]
+  )
+  // Services that were selected but have since been marked unavailable or deleted
+  const selectedButGone = serviceIds
+    .filter(sid => {
+      const svc = allServices.find(s => s.id === sid)
+      return !svc || svc.unavailable
+    })
+    .map(sid => allServices.find(s => s.id === sid)?.name || 'Unknown service')
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -361,6 +360,8 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
                 <div>
                   <p className="text-sm text-white">{svc.name}</p>
                   <p className="text-xs text-gray-400 font-mono">{svc.image}</p>
+                  {!imagePresent(svc) && localImages.length > 0 &&
+                    <span className="text-xs text-yellow-500">not pulled locally</span>}
                 </div>
               </label>
             ))}
