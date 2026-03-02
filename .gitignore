@@ -6,5 +6,5 @@ __pycache__/
 .env
 dist/
 .claude/
-_bat file/
 _ref/
+docs/
