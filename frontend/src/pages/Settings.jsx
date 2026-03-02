@@ -215,6 +215,7 @@ function TemplateDetail({ template, allServices, localImages, anyRunning, onSave
   const [name,       setName]       = useState(template.name)
   const [network,    setNetwork]    = useState(template.network || { name: 'appnet', driver: 'bridge', internal: false, external: false, externalName: '' })
   const [serviceIds, setServiceIds] = useState(template.serviceIds || [])
+  const [hiddenUrlServiceIds, setHiddenUrlServiceIds] = useState(template.hiddenUrlServiceIds || [])
   const [saved,      setSaved]      = useState(false)
   const [error,      setError]      = useState(null)
   const [showYaml,   setShowYaml]   = useState(false)
@@ -239,6 +240,7 @@ function TemplateDetail({ template, allServices, localImages, anyRunning, onSave
     setName(template.name)
     setNetwork(template.network || { name: 'appnet', driver: 'bridge', internal: false, external: false, externalName: '' })
     setServiceIds(template.serviceIds || [])
+    setHiddenUrlServiceIds(template.hiddenUrlServiceIds || [])
     setSaved(false)
     setError(null)
   }, [template.id])
@@ -252,14 +254,26 @@ function TemplateDetail({ template, allServices, localImages, anyRunning, onSave
   const netType = network.external ? 'external' : network.internal ? 'internal' : 'bridge'
 
   function toggleService(id) {
-    setServiceIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setServiceIds(prev => {
+      if (prev.includes(id)) {
+        setHiddenUrlServiceIds(h => h.filter(x => x !== id))
+        return prev.filter(x => x !== id)
+      }
+      return [...prev, id]
+    })
+  }
+
+  function toggleHiddenUrl(id) {
+    setHiddenUrlServiceIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
   }
 
   async function save() {
     if (!name.trim()) return
     setError(null)
     try {
-      await api.updateTemplate(template.id, { name: name.trim(), network, serviceIds })
+      await api.updateTemplate(template.id, { name: name.trim(), network, serviceIds, hiddenUrlServiceIds })
       onSaved()
       setSaved(true)
       savedTimer.current = setTimeout(() => setSaved(false), 2000)
@@ -389,18 +403,35 @@ function TemplateDetail({ template, allServices, localImages, anyRunning, onSave
             <p className="text-gray-500 text-sm">No available services. Add services in the Services tab.</p>
           )}
           <div className="space-y-2">
-            {availableServices.map(svc => (
-              <label key={svc.id} className="flex items-center gap-3 p-3 rounded border border-gray-700 hover:border-gray-600 cursor-pointer">
-                <input type="checkbox" checked={serviceIds.includes(svc.id)}
-                  onChange={() => toggleService(svc.id)} className="accent-blue-500" />
-                <div>
-                  <p className="text-sm text-white">{svc.name}</p>
-                  <p className="text-xs text-gray-400 font-mono">{svc.image}</p>
-                  {!imagePresent(svc) && localImages.length > 0 &&
-                    <span className="text-xs text-yellow-500">not pulled locally</span>}
-                </div>
-              </label>
-            ))}
+            {availableServices.map(svc => {
+              const isChecked = serviceIds.includes(svc.id)
+              return (
+                <label key={svc.id} className="flex items-start gap-3 p-3 rounded border border-gray-700 hover:border-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={isChecked}
+                    onChange={() => toggleService(svc.id)} className="accent-blue-500 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-white">{svc.name}</p>
+                    <p className="text-xs text-gray-400 font-mono">{svc.image}</p>
+                    {!imagePresent(svc) && localImages.length > 0 &&
+                      <span className="text-xs text-yellow-500">not pulled locally</span>}
+                    {isChecked && (
+                      <div className="flex items-center gap-1.5 mt-1.5" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          id={`hide-url-${svc.id}`}
+                          checked={hiddenUrlServiceIds.includes(svc.id)}
+                          onChange={() => toggleHiddenUrl(svc.id)}
+                          className="accent-blue-500"
+                        />
+                        <label htmlFor={`hide-url-${svc.id}`} className="text-xs text-gray-400 cursor-pointer">
+                          Don't show URL
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </label>
+              )
+            })}
             {selectedButGone.length > 0 && (
               <div className="mt-2 space-y-1">
                 {selectedButGone.map((goneName, i) => (
