@@ -1,6 +1,7 @@
 import os
 import subprocess
 import json
+import sys
 import psutil
 from pathlib import Path
 
@@ -67,12 +68,11 @@ def image_pull(image: str) -> tuple[bool, str]:
     return code == 0, err if code != 0 else out
 
 
-def list_containers() -> list[dict]:
+def list_containers() -> list[dict] | None:
     code, out, err = _run(["docker", "ps", "--format", "{{json .}}"])
     if code != 0:
-        import sys
         print(f"[docker_ops] docker ps failed: {err.strip()}", file=sys.stderr)
-        return []
+        return None
     if not out.strip():
         return []
     containers = []

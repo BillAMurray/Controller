@@ -29,7 +29,17 @@ def get_status():
     containers   = docker_ops.list_containers()
     stats        = docker_ops.system_stats()
     local_images = docker_ops.list_images()
-    return {**stats, "runningCount": len(containers), "containers": containers, "localImages": local_images}
+
+    # Reconcile: if the flag says a template is running but Docker has no
+    # containers, the template was stopped outside Controller — clear the flag.
+    if containers is not None and not containers:
+        settings = data_store.load_settings()
+        if settings.get("activeTemplateId"):
+            settings["activeTemplateId"] = None
+            data_store.save_settings(settings)
+
+    container_list = containers if containers is not None else []
+    return {**stats, "runningCount": len(container_list), "containers": container_list, "localImages": local_images}
 
 
 # ── Templates ──────────────────────────────────────────────────────────────────
