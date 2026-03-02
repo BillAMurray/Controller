@@ -1008,8 +1008,8 @@ function AiSettingsTab() {
           <Bot size={14} className="flex-shrink-0 mt-0.5 text-blue-400" />
           <div>
             <p className="font-medium mb-1">Once configured, AI buttons appear in two places:</p>
-            <ul className="space-y-0.5 text-blue-300/80">
-              <li><span className="text-blue-200">Services tab</span> — a "Configure this" button on each service</li>
+            <ul className="list-disc pl-4 space-y-0.5 text-blue-300/80">
+              <li><span className="text-blue-200">Services tab</span> — a "Configure this" button in each service's detail panel</li>
               <li><span className="text-blue-200">Dashboard</span> — a "Fix it" button when a deploy error occurs</li>
             </ul>
           </div>
