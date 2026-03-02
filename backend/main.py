@@ -245,7 +245,7 @@ def create_service_route(body: dict):
 
 @app.put("/api/services/{service_id}")
 def update_service_route(service_id: str, body: dict):
-    allowed = {"name", "image", "ports", "volumes", "volumeAliases", "environment", "restart", "unavailable", "container_name", "command", "depends_on", "gpu"}
+    allowed = {"name", "image", "ports", "volumes", "volumeAliases", "environment", "restart", "unavailable", "container_name", "command", "depends_on", "gpu", "primaryPort", "urlFriendlyName"}
     kwargs  = {k: v for k, v in body.items() if k in allowed}
     s = data_store.update_service(service_id, **kwargs)
     if not s:

@@ -473,15 +473,13 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
     setDepPage(0)
     setGpu(service.gpu || { enabled: false, driver: 'nvidia', count: '1', capabilities: ['gpu'] })
     setUnavailable(service.unavailable || false)
-    setPrimaryPort(service.primaryPort || service.ports?.[0]?.split(':')[0] || '')
+    const incomingPorts = service.ports || []
+    const hostPorts = incomingPorts.map(p => p.split(':')[0]).filter(Boolean)
+    const saved = service.primaryPort
+    setPrimaryPort(saved && hostPorts.includes(saved) ? saved : (hostPorts[0] || ''))
     setUrlFriendlyName(service.urlFriendlyName || '')
     setSaved(false); setError(null)
   }, [service.id])
-
-  useEffect(() => {
-    const hostPorts = ports.map(p => p.split(':')[0]).filter(Boolean)
-    setPrimaryPort(prev => hostPorts.includes(prev) ? prev : (hostPorts[0] || ''))
-  }, [ports])
 
   function toggleDep(svcName) {
     setDependsOn(prev => prev.includes(svcName) ? prev.filter(x => x !== svcName) : [...prev, svcName])
@@ -502,7 +500,7 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
         name: name.trim(), image: image.trim(), container_name: containerName.trim(),
         command: command.trim(), ports, volumes, volumeAliases, environment,
         restart, depends_on: dependsOn, gpu, unavailable,
-        primaryPort: primaryPort || null,
+        primaryPort: primaryPort !== '' ? primaryPort : null,
         urlFriendlyName: urlFriendlyName.trim(),
       })
       onSaved()
@@ -598,7 +596,11 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
             className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
 
-        <ListEditor label="Ports"                values={ports}       onChange={setPorts}       placeholder="e.g. 8080:8080" />
+        <ListEditor label="Ports"                values={ports}       onChange={newPorts => {
+          setPorts(newPorts)
+          const hp = newPorts.map(p => p.split(':')[0]).filter(Boolean)
+          setPrimaryPort(prev => hp.includes(prev) ? prev : (hp[0] || ''))
+        }}       placeholder="e.g. 8080:8080" />
         <ListEditor label="Volumes"              values={volumes}     onChange={setVolumes}     placeholder="e.g. myvolume:/data" />
 
         {/* Volume aliases — shown for each named volume that could have a different Docker name */}
@@ -728,7 +730,7 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
               onChange={e => setPrimaryPort(e.target.value)}
               className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              {ports.map(p => p.split(':')[0]).filter(Boolean).map(hp => (
+              {[...new Set(ports.map(p => p.split(':')[0]).filter(Boolean))].map(hp => (
                 <option key={hp} value={hp}>{hp}</option>
               ))}
             </select>
