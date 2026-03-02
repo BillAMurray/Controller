@@ -8,6 +8,7 @@ import Settings from './pages/Settings'
 export default function App() {
   const [page, setPage] = useState('dashboard')
   const [settingsTab, setSettingsTab] = useState('templates')
+  const [settingsTemplateId, setSettingsTemplateId] = useState(null)
 
   const { data: templates, isLoading, isError } = useQuery({
     queryKey: ['templates'],
@@ -26,15 +27,22 @@ export default function App() {
     return <Onboarding />
   }
 
-  function openSettings(tab = 'templates') {
+  function openSettings(tab = 'templates', templateId = null) {
     setSettingsTab(tab)
+    setSettingsTemplateId(templateId)
     setPage('settings')
   }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {page === 'dashboard' && <Dashboard onSettings={openSettings} />}
-      {page === 'settings' && <Settings onBack={() => setPage('dashboard')} defaultTab={settingsTab} />}
+      {page === 'settings' && (
+        <Settings
+          onBack={() => setPage('dashboard')}
+          defaultTab={settingsTab}
+          defaultTemplateId={settingsTemplateId}
+        />
+      )}
     </div>
   )
 }

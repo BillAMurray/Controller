@@ -96,10 +96,20 @@ def create_service(name: str, image: str) -> dict:
         "id": str(uuid.uuid4()),
         "name": name,
         "image": image,
+        "container_name": "",
+        "command": "",
         "ports": [],
         "volumes": [],
+        "volumeAliases": {},
         "environment": [],
         "restart": "unless-stopped",
+        "depends_on": [],
+        "gpu": {
+            "enabled": False,
+            "driver": "nvidia",
+            "count": "1",
+            "capabilities": ["gpu"],
+        },
         "unavailable": False,
     }
     services = load_services()

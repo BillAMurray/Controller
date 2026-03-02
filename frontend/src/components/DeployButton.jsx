@@ -3,11 +3,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import WarningModal from './WarningModal'
 
-export default function DeployButton({ templateId, activeTemplateId, runningContainers, disabled }) {
+export default function DeployButton({ templateId, activeTemplateId, runningContainers, disabled, onError }) {
   const qc = useQueryClient()
   const [showModal, setShowModal] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
 
   const nothingRunning = runningContainers.length === 0
   const thisIsActive   = activeTemplateId === templateId
@@ -20,14 +19,13 @@ export default function DeployButton({ templateId, activeTemplateId, runningCont
 
   async function executeDeploy() {
     setLoading(true)
-    setError(null)
     try {
       await api.deployTemplate(templateId)
       qc.invalidateQueries({ queryKey: ['status'] })
       qc.invalidateQueries({ queryKey: ['templates'] })
       qc.invalidateQueries({ queryKey: ['settings'] })
     } catch (e) {
-      setError(e.message)
+      onError?.(e.message)
     } finally {
       setLoading(false)
     }
@@ -40,16 +38,13 @@ export default function DeployButton({ templateId, activeTemplateId, runningCont
 
   return (
     <>
-      <div className="flex flex-col items-start gap-1">
-        <button
-          onClick={handleClick}
-          disabled={disabled || loading || !templateId}
-          className={`px-4 py-1.5 rounded text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${btnColor}`}
-        >
-          {loading ? 'Working\u2026' : label}
-        </button>
-        {error && <span className="text-red-400 text-xs max-w-xs truncate" title={error}>{error}</span>}
-      </div>
+      <button
+        onClick={handleClick}
+        disabled={disabled || loading || !templateId}
+        className={`px-4 py-1.5 rounded text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${btnColor}`}
+      >
+        {loading ? 'Working\u2026' : label}
+      </button>
       {showModal && (
         <WarningModal
           containers={runningContainers}

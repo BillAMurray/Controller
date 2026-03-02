@@ -126,7 +126,9 @@ export default function Dashboard({ onSettings }) {
           <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm">C</div>
           <h1 className="text-xl font-bold text-white">Controller</h1>
         </div>
-        <StatsBar status={status} />
+        <div className="flex-1 flex justify-center">
+          <StatsBar status={status} />
+        </div>
         <div className="ml-auto flex items-center gap-2">
           {orphaned ? (
             <button
@@ -199,17 +201,19 @@ export default function Dashboard({ onSettings }) {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {templates.map(t => (
-              <TemplateCard
-                key={t.id}
-                template={t}
-                isRunning={t.id === activeTemplateId}
-                anyRunning={anyRunning}
-                onSettings={onSettings}
-                onError={setDeployError}
-              />
-            ))}
+          <div className="max-w-7xl mx-auto w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {templates.map(t => (
+                <TemplateCard
+                  key={t.id}
+                  template={t}
+                  isRunning={t.id === activeTemplateId}
+                  anyRunning={anyRunning}
+                  onSettings={onSettings}
+                  onError={setDeployError}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
