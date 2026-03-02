@@ -254,13 +254,8 @@ function TemplateDetail({ template, allServices, localImages, anyRunning, onSave
   const netType = network.external ? 'external' : network.internal ? 'internal' : 'bridge'
 
   function toggleService(id) {
-    setServiceIds(prev => {
-      if (prev.includes(id)) {
-        setHiddenUrlServiceIds(h => h.filter(x => x !== id))
-        return prev.filter(x => x !== id)
-      }
-      return [...prev, id]
-    })
+    setServiceIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setHiddenUrlServiceIds(prev => prev.filter(x => x !== id))
   }
 
   function toggleHiddenUrl(id) {

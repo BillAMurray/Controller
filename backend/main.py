@@ -67,6 +67,8 @@ def update_template_route(template_id: str, body: dict):
         kwargs["network"] = body["network"]
     if "serviceIds" in body:
         kwargs["serviceIds"] = body["serviceIds"]
+    if "hiddenUrlServiceIds" in body:
+        kwargs["hiddenUrlServiceIds"] = body["hiddenUrlServiceIds"]
     t = data_store.update_template(template_id, **kwargs)
     if not t:
         raise HTTPException(404, "Template not found")
