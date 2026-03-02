@@ -4,15 +4,7 @@ import { Settings, Square, RefreshCw, X, Bot } from 'lucide-react'
 import { api } from '../api'
 import StatsBar from '../components/StatsBar'
 import AiChatModal from '../components/AiChatModal'
-
-function isAiConfigured(s) {
-  const p = s?.activeAiProvider
-  if (!p) return false
-  const cfg = s?.aiProviders?.[p]
-  if (!cfg?.key?.trim()) return false
-  if (p === 'custom' && !cfg?.url?.trim()) return false
-  return true
-}
+import { isAiConfigured } from '../utils/aiConfig'
 
 // ─── Template Card ────────────────────────────────────────────────────────────
 function TemplateCard({ template, isRunning, anyRunning, onSettings, onError }) {
