@@ -1,10 +1,13 @@
+import re
 import tempfile
 from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
+import ai_provider
 import data_store
 import docker_ops
 import yaml_generator
@@ -89,7 +92,10 @@ def _get_generated_yaml(template_id: str) -> str:
     if not template:
         raise HTTPException(404, "Template not found")
     services = [data_store.get_service(sid) for sid in template.get("serviceIds", [])]
-    return yaml_generator.generate_compose(template, [s for s in services if s])
+    try:
+        return yaml_generator.generate_compose(template, [s for s in services if s])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/api/templates/{template_id}/deploy")
@@ -114,6 +120,23 @@ def stop_template(template_id: str):
     settings = data_store.load_settings()
     if settings.get("activeTemplateId") != template_id:
         raise HTTPException(409, "Template is not the active deployment")
+    publish_dir = settings.get("publishDir", "")
+    if not publish_dir or not Path(publish_dir).exists():
+        raise HTTPException(400, "Publish directory not configured")
+    compose_file = Path(publish_dir) / "docker-compose.yml"
+    if not compose_file.exists():
+        raise HTTPException(400, "No compose file in publish directory")
+    ok, msg = docker_ops.compose_down(str(compose_file))
+    if not ok:
+        raise HTTPException(500, f"docker compose down failed: {msg}")
+    settings["activeTemplateId"] = None
+    data_store.save_settings(settings)
+    return {"ok": True}
+
+
+@app.post("/api/force-stop")
+def force_stop():
+    settings = data_store.load_settings()
     publish_dir = settings.get("publishDir", "")
     if not publish_dir or not Path(publish_dir).exists():
         raise HTTPException(400, "Publish directory not configured")
@@ -182,6 +205,25 @@ def list_services():
     return data_store.load_services()
 
 
+@app.post("/api/services/sync")
+def sync_services():
+    """Discover local Docker images and create service entries for any not yet tracked."""
+    local_images = docker_ops.list_images()
+    existing = data_store.load_services()
+    existing_images = {s["image"] for s in existing}
+    created = []
+    for img in local_images:
+        if img in existing_images:
+            continue
+        # Derive a name: "ghcr.io/open-webui/open-webui:main" → "open-webui"
+        base = re.sub(r"@[^:/]+:[^:/]+$", "", img)
+        base = base.split("/")[-1].split(":")[0]
+        base = re.sub(r"[^a-z0-9_-]", "_", base, flags=re.IGNORECASE) or "service"
+        svc = data_store.create_service(base, img)
+        created.append(svc)
+    return {"created": created, "total": len(data_store.load_services())}
+
+
 @app.post("/api/services")
 def create_service_route(body: dict):
     name  = body.get("name", "").strip()
@@ -193,7 +235,7 @@ def create_service_route(body: dict):
 
 @app.put("/api/services/{service_id}")
 def update_service_route(service_id: str, body: dict):
-    allowed = {"name", "image", "ports", "volumes", "environment", "restart", "unavailable"}
+    allowed = {"name", "image", "ports", "volumes", "volumeAliases", "environment", "restart", "unavailable", "container_name", "command", "depends_on", "gpu"}
     kwargs  = {k: v for k, v in body.items() if k in allowed}
     s = data_store.update_service(service_id, **kwargs)
     if not s:
@@ -249,5 +291,24 @@ def update_settings(body: dict):
     settings = data_store.load_settings()
     if "publishDir" in body:
         settings["publishDir"] = body["publishDir"]
+    if "aiProviders" in body:
+        settings["aiProviders"] = body["aiProviders"]
+    if "activeAiProvider" in body:
+        settings["activeAiProvider"] = body["activeAiProvider"]
     data_store.save_settings(settings)
     return settings
+
+
+# ── AI Chat ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/ai/chat")
+def ai_chat(body: dict):
+    context  = body.get("context", {})
+    messages = body.get("messages", [])
+    settings = data_store.load_settings()
+    try:
+        ai_provider.validate_and_get_config(settings)  # raises ValueError if misconfigured
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    gen = ai_provider.stream_chat(settings, context, messages)
+    return StreamingResponse(gen, media_type="text/event-stream")
