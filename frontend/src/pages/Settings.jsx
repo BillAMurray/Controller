@@ -1004,6 +1004,17 @@ function AiSettingsTab() {
           Store API keys for multiple providers. Check "Use this" to select the active one.
         </p>
 
+        <div className="flex gap-3 p-3 mb-6 bg-blue-900/20 border border-blue-800/50 rounded-lg text-xs text-blue-300">
+          <Bot size={14} className="flex-shrink-0 mt-0.5 text-blue-400" />
+          <div>
+            <p className="font-medium mb-1">Once configured, AI buttons appear in two places:</p>
+            <ul className="space-y-0.5 text-blue-300/80">
+              <li><span className="text-blue-200">Services tab</span> — a "Configure this" button on each service</li>
+              <li><span className="text-blue-200">Dashboard</span> — a "Fix it" button when a deploy error occurs</li>
+            </ul>
+          </div>
+        </div>
+
         <div className="space-y-4">
           {AI_PROVIDERS.map(({ id, label, needsUrl }) => {
             const isActive = activeProvider === id
