@@ -453,6 +453,8 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
   const [depPage,       setDepPage]       = useState(0)
   const [gpu,           setGpu]           = useState(service.gpu || { enabled: false, driver: 'nvidia', count: '1', capabilities: ['gpu'] })
   const [unavailable,   setUnavailable]   = useState(service.unavailable || false)
+  const [primaryPort,     setPrimaryPort]     = useState(service.primaryPort     || service.ports?.[0]?.split(':')[0] || '')
+  const [urlFriendlyName, setUrlFriendlyName] = useState(service.urlFriendlyName || '')
   const [saved,         setSaved]         = useState(false)
   const [error,         setError]         = useState(null)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
@@ -471,8 +473,15 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
     setDepPage(0)
     setGpu(service.gpu || { enabled: false, driver: 'nvidia', count: '1', capabilities: ['gpu'] })
     setUnavailable(service.unavailable || false)
+    setPrimaryPort(service.primaryPort || service.ports?.[0]?.split(':')[0] || '')
+    setUrlFriendlyName(service.urlFriendlyName || '')
     setSaved(false); setError(null)
   }, [service.id])
+
+  useEffect(() => {
+    const hostPorts = ports.map(p => p.split(':')[0]).filter(Boolean)
+    setPrimaryPort(prev => hostPorts.includes(prev) ? prev : (hostPorts[0] || ''))
+  }, [ports])
 
   function toggleDep(svcName) {
     setDependsOn(prev => prev.includes(svcName) ? prev.filter(x => x !== svcName) : [...prev, svcName])
@@ -493,6 +502,8 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
         name: name.trim(), image: image.trim(), container_name: containerName.trim(),
         command: command.trim(), ports, volumes, volumeAliases, environment,
         restart, depends_on: dependsOn, gpu, unavailable,
+        primaryPort: primaryPort || null,
+        urlFriendlyName: urlFriendlyName.trim(),
       })
       onSaved()
       setSaved(true)
@@ -702,6 +713,37 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
               </div>
             </div>
           )}
+        </div>
+
+        {/* URL settings */}
+        <div className="mb-4">
+          <label className="block text-sm text-gray-300 mb-1">
+            Primary Port <span className="text-gray-500 text-xs">(used for Dashboard URL link)</span>
+          </label>
+          {ports.length === 0 ? (
+            <p className="text-xs text-gray-500 italic">No ports defined for this service</p>
+          ) : (
+            <select
+              value={primaryPort}
+              onChange={e => setPrimaryPort(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {ports.map(p => p.split(':')[0]).filter(Boolean).map(hp => (
+                <option key={hp} value={hp}>{hp}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm text-gray-300 mb-1">
+            URL Friendly Name <span className="text-gray-500 text-xs">(optional — leave blank to use service name)</span>
+          </label>
+          <input
+            value={urlFriendlyName}
+            onChange={e => setUrlFriendlyName(e.target.value)}
+            placeholder="e.g. Open WebUI"
+            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
         </div>
 
         <label className="flex items-start gap-3 p-3 rounded border border-gray-700 cursor-pointer hover:border-gray-600 mb-4">
