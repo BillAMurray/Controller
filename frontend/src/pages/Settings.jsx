@@ -1194,12 +1194,12 @@ export default function Settings({ onBack, defaultTab = 'templates', defaultTemp
         </button>
         <h1 className="text-lg font-bold text-white">Settings</h1>
         <div className="flex gap-1 ml-4">
-          {['templates', 'services', 'ai'].map(t => (
+          {['templates', 'services'].map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded text-sm capitalize transition-colors ${
                 tab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}>
-              {t === 'ai' ? 'AI' : t}
+              {t}
             </button>
           ))}
         </div>
