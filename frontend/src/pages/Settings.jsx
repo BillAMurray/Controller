@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2, Save, Code2, X, Plus, RefreshCw, Bot, Eye, EyeOff } from 'lucide-react'
 import { api } from '../api'
 import AiChatModal from '../components/AiChatModal'
+import { isAiConfigured } from '../utils/aiConfig'
 
 // ─── Helper: list editor (ports, volumes, env) ───────────────────────────────
 function ListEditor({ label, values, onChange, placeholder }) {
@@ -430,7 +431,7 @@ function TemplateDetail({ template, allServices, localImages, anyRunning, onSave
 }
 
 // ─── Service Detail ───────────────────────────────────────────────────────────
-function ServiceDetail({ service, allServices = [], isInRunningTemplate = false, onSaved, onDeleted }) {
+function ServiceDetail({ service, allServices = [], isInRunningTemplate = false, aiEnabled = false, onSaved, onDeleted }) {
   const [pulling, setPulling] = useState(false)
 
   async function pullService() {
@@ -549,12 +550,14 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
 
       <div className="max-w-xl">
         <div className="flex justify-end gap-2 mb-4">
-          <button
-            onClick={() => setAiConfigOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors"
-          >
-            <Bot size={12} /> Configure this
-          </button>
+          {aiEnabled && (
+            <button
+              onClick={() => setAiConfigOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors"
+            >
+              <Bot size={12} /> Configure this
+            </button>
+          )}
           <button onClick={pullService} disabled={pulling || isInRunningTemplate}
             title={isInRunningTemplate ? 'Stop the running template before pulling this service' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 disabled:opacity-50 transition-colors">
@@ -931,6 +934,7 @@ function ServicesTab({ onAiSettings }) {
           service={activeService}
           allServices={services}
           isInRunningTemplate={runningServiceIds.has(activeService.id)}
+          aiEnabled={isAiConfigured(settings)}
           onSaved={refresh}
           onDeleted={() => { refresh(); setSelectedId(null) }}
         />
