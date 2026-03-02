@@ -49,22 +49,31 @@ Ask clarifying questions if needed. Be concise and friendly."""
 
 # ── Provider streaming ────────────────────────────────────────────────────────
 
-def stream_chat(settings: dict, context: dict, messages: list[dict]) -> Generator[str, None, None]:
-    """
-    Yield SSE-formatted lines: 'data: <token>\\n\\n'
-    Terminates with 'data: [DONE]\\n\\n'
-    """
+def validate_and_get_config(settings: dict) -> tuple[str, dict]:
+    """Eagerly validates AI settings. Raises ValueError before any streaming begins."""
     provider = settings.get("activeAiProvider")
     providers = settings.get("aiProviders", {})
-
     if not provider or provider not in providers:
         raise ValueError("No AI provider configured. Go to AI Settings.")
-
     cfg = providers[provider]
     key = cfg.get("key", "").strip()
     if not key:
         raise ValueError(f"No API key set for provider '{provider}'. Go to AI Settings.")
+    if provider == "custom":
+        url = cfg.get("url", "").strip()
+        if not url:
+            raise ValueError("Custom provider requires a URL. Go to AI Settings.")
+    return provider, cfg
 
+
+def stream_chat(settings: dict, context: dict, messages: list[dict]) -> Generator[str, None, None]:
+    """
+    Yield SSE-formatted lines: 'data: <token>\\n\\n'
+    Terminates with 'data: [DONE]\\n\\n'
+    Call validate_and_get_config() before passing this to StreamingResponse.
+    """
+    provider, cfg = validate_and_get_config(settings)
+    key = cfg.get("key", "").strip()
     system_prompt = build_system_prompt(context)
 
     if provider == "claude":
@@ -79,8 +88,6 @@ def stream_chat(settings: dict, context: dict, messages: list[dict]) -> Generato
         )
     elif provider == "custom":
         url = cfg.get("url", "").strip()
-        if not url:
-            raise ValueError("Custom provider requires a URL. Go to AI Settings.")
         model = cfg.get("model", "").strip() or "gpt-4o"
         yield from _stream_openai(
             key=key,
@@ -117,6 +124,8 @@ def _stream_openai(
         stream=True,
     ) as stream:
         for chunk in stream:
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta.content
             if delta:
                 yield f"data: {json.dumps(delta)}\n\n"
