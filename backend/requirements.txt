@@ -4,6 +4,8 @@ python-multipart==0.0.6
 aiofiles==23.2.1
 psutil==5.9.8
 pyyaml==6.0.1
+anthropic>=0.25.0
+openai>=1.14.0
 pytest==7.4.4
 pytest-asyncio==0.23.3
 httpx==0.26.0
