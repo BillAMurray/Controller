@@ -6,6 +6,12 @@ import StatsBar from '../components/StatsBar'
 import AiChatModal from '../components/AiChatModal'
 import { isAiConfigured } from '../utils/aiConfig'
 
+function getPrimaryPort(service) {
+  if (service.primaryPort) return service.primaryPort
+  const first = service.ports?.[0]
+  return first ? first.split(':')[0] : null
+}
+
 // ─── Template Card ────────────────────────────────────────────────────────────
 function TemplateCard({ template, isRunning, anyRunning, onSettings, onError }) {
   const qc = useQueryClient()
@@ -192,6 +198,29 @@ export default function Dashboard({ onSettings }) {
             onApplied={() => qc.invalidateQueries({ queryKey: ['services'] })}
           />
         )}
+
+        {anyRunning && (() => {
+          const runningTpl = templates.find(t => t.id === activeTemplateId)
+          if (!runningTpl) return null
+          const hidden = runningTpl.hiddenUrlServiceIds || []
+          const links = (runningTpl.serviceIds || [])
+            .filter(sid => !hidden.includes(sid))
+            .map(sid => services.find(s => s.id === sid))
+            .filter(Boolean)
+            .map(svc => ({ label: svc.urlFriendlyName?.trim() || svc.name, port: getPrimaryPort(svc) }))
+            .filter(l => l.port)
+          if (links.length === 0) return null
+          return (
+            <div className="mb-4 p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg flex items-center justify-center gap-6 flex-wrap">
+              {links.map((link, i) => (
+                <a key={i} href={`http://localhost:${link.port}`} target="_blank" rel="noreferrer"
+                  className="text-blue-300 hover:text-blue-100 text-sm transition-colors">
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          )
+        })()}
 
         {templates.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-2">
