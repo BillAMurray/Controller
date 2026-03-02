@@ -7,7 +7,7 @@ import AiChatModal from '../components/AiChatModal'
 import { isAiConfigured } from '../utils/aiConfig'
 
 function getPrimaryPort(service) {
-  if (service.primaryPort) return service.primaryPort
+  if (service.primaryPort != null && service.primaryPort !== '') return service.primaryPort
   const first = service.ports?.[0]
   return first ? first.split(':')[0] : null
 }
