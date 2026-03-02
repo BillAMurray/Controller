@@ -2,7 +2,7 @@
 
 A local web UI for managing Docker Compose stacks. Define your services once, build reusable templates, and deploy or stop your entire stack with a single click. This is a **companion app** intended to work with your existing installation of Docker (Docker Desktop).
 
-![screenshot placeholder]
+![Controller dashboard](assets/screenshot.png)
 
 ## Features
 
