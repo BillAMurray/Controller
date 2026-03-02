@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Trash2, Save, Code2, X, Plus, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, Code2, X, Plus, RefreshCw, Bot, Eye, EyeOff } from 'lucide-react'
 import { api } from '../api'
 
 // ─── Helper: list editor (ports, volumes, env) ───────────────────────────────
@@ -208,14 +208,28 @@ function AddServiceDialog({ onClose, onAdded }) {
 }
 
 // ─── Template Detail ──────────────────────────────────────────────────────────
-function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted }) {
+function TemplateDetail({ template, allServices, localImages, anyRunning, onSaved, onDeleted }) {
+  const qc = useQueryClient()
   const [name,       setName]       = useState(template.name)
   const [network,    setNetwork]    = useState(template.network || { name: 'appnet', driver: 'bridge', internal: false, external: false, externalName: '' })
   const [serviceIds, setServiceIds] = useState(template.serviceIds || [])
   const [saved,      setSaved]      = useState(false)
   const [error,      setError]      = useState(null)
   const [showYaml,   setShowYaml]   = useState(false)
+  const [pulling,    setPulling]    = useState(false)
   const savedTimer = useRef(null)
+
+  async function pull() {
+    setPulling(true)
+    try {
+      await api.pullTemplate(template.id)
+      qc.invalidateQueries({ queryKey: ['templates'] })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setPulling(false)
+    }
+  }
 
   useEffect(() => () => clearTimeout(savedTimer.current), [])
 
@@ -280,6 +294,17 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
     <div className="flex-1 overflow-auto p-6">
       {showYaml && <YamlModal templateId={template.id} templateName={template.name} onClose={() => setShowYaml(false)} />}
 
+      {error && (
+        <div className="mb-4 p-4 bg-red-900/30 border border-red-600 rounded-lg flex items-start gap-3">
+          <div className="flex-1">
+            <p className="text-red-300 text-sm">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 flex-shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div className="max-w-xl">
         {/* Header row */}
         <div className="flex items-center justify-between mb-6">
@@ -288,10 +313,19 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
             onChange={e => setName(e.target.value)}
             className="text-lg font-semibold bg-transparent border-b border-gray-600 text-white focus:outline-none focus:border-blue-500 flex-1 mr-4"
           />
-          <button onClick={() => setShowYaml(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-mono">
-            <Code2 size={14} /> &lt;/&gt;
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={pull}
+              disabled={pulling || anyRunning}
+              title={anyRunning ? 'Stop the running template before pulling' : undefined}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 disabled:opacity-50 transition-colors">
+              <RefreshCw size={13} className={pulling ? 'animate-spin' : ''} /> Pull
+            </button>
+            <button onClick={() => setShowYaml(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300">
+              <Code2 size={14} /> View
+            </button>
+          </div>
         </div>
 
         {/* Section 1: Network */}
@@ -379,7 +413,6 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
         </section>
 
         {/* Footer */}
-        {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
         <div className="flex justify-between">
           <button onClick={del}
             className="flex items-center gap-1.5 px-3 py-2 bg-red-900 hover:bg-red-800 rounded text-red-300 text-sm transition-colors">
@@ -396,33 +429,68 @@ function TemplateDetail({ template, allServices, localImages, onSaved, onDeleted
 }
 
 // ─── Service Detail ───────────────────────────────────────────────────────────
-function ServiceDetail({ service, onSaved, onDeleted }) {
-  const [name,        setName]        = useState(service.name)
-  const [image,       setImage]       = useState(service.image)
-  const [ports,       setPorts]       = useState(service.ports || [])
-  const [volumes,     setVolumes]     = useState(service.volumes || [])
-  const [environment, setEnvironment] = useState(service.environment || [])
-  const [restart,     setRestart]     = useState(service.restart || 'unless-stopped')
-  const [unavailable, setUnavailable] = useState(service.unavailable || false)
-  const [saved,       setSaved]       = useState(false)
-  const [error,       setError]       = useState(null)
+function ServiceDetail({ service, allServices = [], isInRunningTemplate = false, onSaved, onDeleted }) {
+  const [pulling, setPulling] = useState(false)
+
+  async function pullService() {
+    setPulling(true)
+    try { await api.pullService(service.id) }
+    catch { /* errors surfaced elsewhere */ }
+    finally { setPulling(false) }
+  }
+  const [name,          setName]          = useState(service.name)
+  const [image,         setImage]         = useState(service.image)
+  const [containerName, setContainerName] = useState(service.container_name || '')
+  const [command,       setCommand]       = useState(service.command || '')
+  const [ports,         setPorts]         = useState(service.ports || [])
+  const [volumes,       setVolumes]       = useState(service.volumes || [])
+  const [volumeAliases, setVolumeAliases] = useState(service.volumeAliases || {})
+  const [environment,   setEnvironment]   = useState(service.environment || [])
+  const [restart,       setRestart]       = useState(service.restart || 'unless-stopped')
+  const [dependsOn,     setDependsOn]     = useState(service.depends_on || [])
+  const [depPage,       setDepPage]       = useState(0)
+  const [gpu,           setGpu]           = useState(service.gpu || { enabled: false, driver: 'nvidia', count: '1', capabilities: ['gpu'] })
+  const [unavailable,   setUnavailable]   = useState(service.unavailable || false)
+  const [saved,         setSaved]         = useState(false)
+  const [error,         setError]         = useState(null)
   const savedTimer = useRef(null)
 
   useEffect(() => () => clearTimeout(savedTimer.current), [])
 
   useEffect(() => {
     setName(service.name);        setImage(service.image)
+    setContainerName(service.container_name || '')
+    setCommand(service.command || '')
     setPorts(service.ports || []); setVolumes(service.volumes || [])
+    setVolumeAliases(service.volumeAliases || {})
     setEnvironment(service.environment || []); setRestart(service.restart || 'unless-stopped')
+    setDependsOn(service.depends_on || [])
+    setDepPage(0)
+    setGpu(service.gpu || { enabled: false, driver: 'nvidia', count: '1', capabilities: ['gpu'] })
     setUnavailable(service.unavailable || false)
     setSaved(false); setError(null)
   }, [service.id])
+
+  function toggleDep(svcName) {
+    setDependsOn(prev => prev.includes(svcName) ? prev.filter(x => x !== svcName) : [...prev, svcName])
+  }
+
+  function toggleCapability(cap) {
+    setGpu(prev => {
+      const caps = prev.capabilities || []
+      return { ...prev, capabilities: caps.includes(cap) ? caps.filter(c => c !== cap) : [...caps, cap] }
+    })
+  }
 
   async function save() {
     if (!name.trim() || !image.trim()) return
     setError(null)
     try {
-      await api.updateService(service.id, { name: name.trim(), image: image.trim(), ports, volumes, environment, restart, unavailable })
+      await api.updateService(service.id, {
+        name: name.trim(), image: image.trim(), container_name: containerName.trim(),
+        command: command.trim(), ports, volumes, volumeAliases, environment,
+        restart, depends_on: dependsOn, gpu, unavailable,
+      })
       onSaved()
       setSaved(true)
       savedTimer.current = setTimeout(() => setSaved(false), 2000)
@@ -441,7 +509,25 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
 
   return (
     <div className="flex-1 overflow-auto p-6">
+      {error && (
+        <div className="mb-4 p-4 bg-red-900/30 border border-red-600 rounded-lg flex items-start gap-3">
+          <div className="flex-1">
+            <p className="text-red-300 text-sm">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 flex-shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div className="max-w-xl">
+        <div className="flex justify-end mb-4">
+          <button onClick={pullService} disabled={pulling || isInRunningTemplate}
+            title={isInRunningTemplate ? 'Stop the running template before pulling this service' : undefined}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 disabled:opacity-50 transition-colors">
+            <RefreshCw size={12} className={pulling ? 'animate-spin' : ''} /> {pulling ? 'Pulling…' : 'Pull'}
+          </button>
+        </div>
         <div className="mb-4">
           <label className="block text-sm text-gray-300 mb-1">Service name (compose key)</label>
           <input value={name} onChange={e => setName(e.target.value)}
@@ -452,9 +538,48 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
           <input value={image} onChange={e => setImage(e.target.value)}
             className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
+        <div className="mb-4">
+          <label className="block text-sm text-gray-300 mb-1">Container name <span className="text-gray-500 text-xs">(optional)</span></label>
+          <input value={containerName} onChange={e => setContainerName(e.target.value)}
+            placeholder="e.g. my-ollama"
+            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm text-gray-300 mb-1">Command <span className="text-gray-500 text-xs">(optional)</span></label>
+          <input value={command} onChange={e => setCommand(e.target.value)}
+            placeholder="e.g. --port 4000 --num_workers 1"
+            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        </div>
 
         <ListEditor label="Ports"                values={ports}       onChange={setPorts}       placeholder="e.g. 8080:8080" />
         <ListEditor label="Volumes"              values={volumes}     onChange={setVolumes}     placeholder="e.g. myvolume:/data" />
+
+        {/* Volume aliases — shown for each named volume that could have a different Docker name */}
+        {volumes.filter(v => { const h = v.split(':')[0]; return h && !h.startsWith('.') && !h.startsWith('/') && !(h.length === 1 && /[a-z]/i.test(h)) }).length > 0 && (
+          <div className="mb-4">
+            <label className="block text-sm text-gray-300 mb-1">
+              Volume Docker names <span className="text-gray-500 text-xs">(if the actual Docker volume name differs from the key above)</span>
+            </label>
+            <div className="space-y-2">
+              {volumes
+                .map(v => v.split(':')[0])
+                .filter((h, i, arr) => h && !h.startsWith('.') && !h.startsWith('/') && !(h.length === 1 && /[a-z]/i.test(h)) && arr.indexOf(h) === i)
+                .map(composeKey => (
+                  <div key={composeKey} className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 font-mono w-40 truncate">{composeKey}</span>
+                    <span className="text-gray-600 text-xs">→</span>
+                    <input
+                      value={volumeAliases[composeKey] || ''}
+                      onChange={e => setVolumeAliases(prev => ({ ...prev, [composeKey]: e.target.value }))}
+                      placeholder={composeKey}
+                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+        )}
         <ListEditor label="Environment Variables" values={environment} onChange={setEnvironment} placeholder="e.g. KEY=value" />
 
         <div className="mb-4">
@@ -467,6 +592,82 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
           </select>
         </div>
 
+        {/* Depends on — paged, 5 per page */}
+        {(() => {
+          const PAGE_SIZE = 5
+          const eligible = allServices.filter(s => s.id !== service.id && !s.unavailable)
+          if (eligible.length === 0) return null
+          const pageCount = Math.ceil(eligible.length / PAGE_SIZE)
+          const page = depPage ?? 0
+          const slice = eligible.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+          return (
+            <div className="mb-4">
+              <label className="block text-sm text-gray-300 mb-1">Depends on</label>
+              <div className="space-y-1">
+                {slice.map(s => (
+                  <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-700 hover:border-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={dependsOn.includes(s.name)}
+                      onChange={() => toggleDep(s.name)} className="accent-blue-500" />
+                    <span className="text-sm text-white">{s.name}</span>
+                  </label>
+                ))}
+              </div>
+              {pageCount > 1 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <button onClick={() => setDepPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                    className="px-2 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 disabled:opacity-40">‹ Prev</button>
+                  <span className="text-xs text-gray-500">{page + 1} / {pageCount}</span>
+                  <button onClick={() => setDepPage(p => Math.min(pageCount - 1, p + 1))} disabled={page === pageCount - 1}
+                    className="px-2 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 disabled:opacity-40">Next ›</button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* GPU */}
+        <div className="mb-4">
+          <label className="block text-sm text-gray-300 mb-2">GPU</label>
+          <label className="flex items-center gap-2 mb-2 cursor-pointer">
+            <input type="checkbox" checked={gpu.enabled}
+              onChange={e => setGpu(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-blue-500" />
+            <span className="text-sm text-white">Enable GPU passthrough</span>
+          </label>
+          {gpu.enabled && (
+            <div className="ml-6 space-y-3 border-l border-gray-700 pl-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Driver</label>
+                <select value={gpu.driver} onChange={e => setGpu(prev => ({ ...prev, driver: e.target.value }))}
+                  className="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="nvidia">nvidia</option>
+                  <option value="amd">amd</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Count</label>
+                <select value={gpu.count} onChange={e => setGpu(prev => ({ ...prev, count: e.target.value }))}
+                  className="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="all">all</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Capabilities</label>
+                <div className="flex gap-3">
+                  {['gpu', 'compute', 'utility', 'graphics', 'video'].map(cap => (
+                    <label key={cap} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={(gpu.capabilities || []).includes(cap)}
+                        onChange={() => toggleCapability(cap)} className="accent-blue-500" />
+                      <span className="text-xs text-gray-300">{cap}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <label className="flex items-start gap-3 p-3 rounded border border-gray-700 cursor-pointer hover:border-gray-600 mb-4">
           <input type="checkbox" checked={unavailable} onChange={e => setUnavailable(e.target.checked)} className="mt-0.5 accent-blue-500" />
           <div>
@@ -475,7 +676,6 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
           </div>
         </label>
 
-        {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
         <div className="flex justify-between">
           <button onClick={del}
             className="flex items-center gap-1.5 px-3 py-2 bg-red-900 hover:bg-red-800 rounded text-red-300 text-sm transition-colors">
@@ -492,14 +692,27 @@ function ServiceDetail({ service, onSaved, onDeleted }) {
 }
 
 // ─── Templates Tab ────────────────────────────────────────────────────────────
-function TemplatesTab() {
+function TemplatesTab({ defaultTemplateId = null, onAiSettings }) {
   const qc = useQueryClient()
-  const [selectedId,     setSelectedId]     = useState(null)
+  const [selectedId,     setSelectedId]     = useState(defaultTemplateId)
   const [showNewDialog,  setShowNewDialog]  = useState(false)
+  const hasSynced = useRef(false)
 
   const { data: templates  = [] } = useQuery({ queryKey: ['templates'],  queryFn: api.getTemplates })
   const { data: allServices = [] } = useQuery({ queryKey: ['services'],  queryFn: api.getServices })
   const { data: status }           = useQuery({ queryKey: ['status'],    queryFn: api.getStatus, refetchInterval: 5000 })
+  const { data: settings }         = useQuery({ queryKey: ['settings'],  queryFn: api.getSettings })
+
+  const anyRunning = !!settings?.activeTemplateId
+
+  // Auto-sync services from Docker on first mount
+  useEffect(() => {
+    if (hasSynced.current) return
+    hasSynced.current = true
+    api.syncServices()
+      .then(() => qc.invalidateQueries({ queryKey: ['services'] }))
+      .catch(() => {})
+  }, [qc])
 
   const localImages   = status?.localImages || []
   const activeId      = selectedId || templates[0]?.id
@@ -542,6 +755,12 @@ function TemplatesTab() {
             ))
           )}
         </div>
+        <div className="p-3 border-t border-gray-700">
+          <button onClick={onAiSettings}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors w-full">
+            <Bot size={12} /> AI Settings
+          </button>
+        </div>
       </aside>
 
       {/* Right panel */}
@@ -551,6 +770,7 @@ function TemplatesTab() {
           template={activeTemplate}
           allServices={allServices}
           localImages={localImages}
+          anyRunning={anyRunning}
           onSaved={refresh}
           onDeleted={() => { refresh(); setSelectedId(null) }}
         />
@@ -564,19 +784,55 @@ function TemplatesTab() {
 }
 
 // ─── Services Tab ─────────────────────────────────────────────────────────────
-function ServicesTab() {
+function ServicesTab({ onAiSettings }) {
   const qc = useQueryClient()
   const [selectedId,    setSelectedId]    = useState(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [syncing,       setSyncing]       = useState(false)
+  const [pullingAll,    setPullingAll]    = useState(false)
+  const hasSynced = useRef(false)
 
-  const { data: services = [] } = useQuery({ queryKey: ['services'], queryFn: api.getServices })
-  const { data: status }        = useQuery({ queryKey: ['status'],   queryFn: api.getStatus, refetchInterval: 5000 })
+  const { data: services  = [] } = useQuery({ queryKey: ['services'],  queryFn: api.getServices })
+  const { data: templates = [] } = useQuery({ queryKey: ['templates'], queryFn: api.getTemplates })
+  const { data: status }         = useQuery({ queryKey: ['status'],    queryFn: api.getStatus, refetchInterval: 5000 })
+  const { data: settings }       = useQuery({ queryKey: ['settings'],  queryFn: api.getSettings })
 
-  const localImages  = status?.localImages || []
-  const activeId     = selectedId || services[0]?.id
-  const activeService = services.find(s => s.id === activeId)
+  const localImages    = status?.localImages || []
+  const activeId       = selectedId || services[0]?.id
+  const activeService  = services.find(s => s.id === activeId)
+  const anyRunning     = !!settings?.activeTemplateId
+  const runningTemplate = templates.find(t => t.id === settings?.activeTemplateId)
+  const runningServiceIds = new Set(runningTemplate?.serviceIds || [])
+
+  // Auto-sync from Docker on first mount
+  useEffect(() => {
+    if (hasSynced.current) return
+    hasSynced.current = true
+    api.syncServices()
+      .then(() => qc.invalidateQueries({ queryKey: ['services'] }))
+      .catch(() => {})
+  }, [qc])
 
   function refresh() { qc.invalidateQueries({ queryKey: ['services'] }) }
+
+  async function pullAll() {
+    setPullingAll(true)
+    try {
+      await api.pullAll()
+      qc.invalidateQueries({ queryKey: ['templates'] })
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    } catch { /* ignore */ }
+    finally { setPullingAll(false) }
+  }
+
+  async function syncFromDocker() {
+    setSyncing(true)
+    try {
+      await api.syncServices()
+      qc.invalidateQueries({ queryKey: ['services'] })
+    } catch { /* ignore */ }
+    finally { setSyncing(false) }
+  }
 
   function handleAdded(s) {
     qc.invalidateQueries({ queryKey: ['services'] })
@@ -590,10 +846,19 @@ function ServicesTab() {
 
       {/* Left panel */}
       <aside className="w-56 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
-        <div className="p-3 border-b border-gray-700">
+        <div className="p-3 border-b border-gray-700 space-y-2">
           <button onClick={() => setShowAddDialog(true)}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm transition-colors">
             <Plus size={14} /> Add Service
+          </button>
+          <button onClick={pullAll} disabled={pullingAll || anyRunning}
+            title={anyRunning ? 'Stop the running template before pulling' : undefined}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 text-sm transition-colors disabled:opacity-50">
+            <RefreshCw size={14} className={pullingAll ? 'animate-spin' : ''} /> {pullingAll ? 'Pulling…' : 'Pull All'}
+          </button>
+          <button onClick={syncFromDocker} disabled={syncing}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 text-sm transition-colors disabled:opacity-50">
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> {syncing ? 'Syncing…' : 'Sync from Docker'}
           </button>
         </div>
         <div className="flex-1 overflow-auto">
@@ -618,6 +883,12 @@ function ServicesTab() {
             })
           )}
         </div>
+        <div className="p-3 border-t border-gray-700">
+          <button onClick={onAiSettings}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors w-full">
+            <Bot size={12} /> AI Settings
+          </button>
+        </div>
       </aside>
 
       {/* Right panel */}
@@ -625,6 +896,8 @@ function ServicesTab() {
         <ServiceDetail
           key={activeService.id}
           service={activeService}
+          allServices={services}
+          isInRunningTemplate={runningServiceIds.has(activeService.id)}
           onSaved={refresh}
           onDeleted={() => { refresh(); setSelectedId(null) }}
         />
@@ -633,6 +906,121 @@ function ServicesTab() {
           {services.length === 0 ? 'Add a service to get started.' : 'Select a service.'}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── AI Settings Tab ─────────────────────────────────────────────────────────
+const AI_PROVIDERS = [
+  { id: 'claude',    label: 'Claude (Anthropic)',   needsUrl: false },
+  { id: 'gemini',    label: 'Gemini (Google)',       needsUrl: false },
+  { id: 'custom',    label: 'Custom / Local LLM',   needsUrl: true  },
+]
+
+function AiSettingsTab() {
+  const qc = useQueryClient()
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: api.getSettings })
+
+  const [providers,       setProviders]       = useState({})
+  const [activeProvider,  setActiveProvider]  = useState(null)
+  const [show,            setShow]            = useState({})
+  const [saved,           setSaved]           = useState(false)
+  const savedTimer = useRef(null)
+  useEffect(() => () => clearTimeout(savedTimer.current), [])
+
+  useEffect(() => {
+    if (!settings) return
+    setProviders(settings.aiProviders || {})
+    setActiveProvider(settings.activeAiProvider || null)
+  }, [settings])
+
+  function setKey(id, key) {
+    setProviders(prev => ({ ...prev, [id]: { ...(prev[id] || {}), key } }))
+  }
+  function setUrl(id, url) {
+    setProviders(prev => ({ ...prev, [id]: { ...(prev[id] || {}), url } }))
+  }
+  function toggleShow(id) {
+    setShow(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+  function selectActive(id) {
+    setActiveProvider(id)
+  }
+
+  async function save() {
+    try {
+      await api.saveSettings({ aiProviders: providers, activeAiProvider: activeProvider })
+      qc.invalidateQueries({ queryKey: ['settings'] })
+      setSaved(true)
+      savedTimer.current = setTimeout(() => setSaved(false), 2000)
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      <div className="max-w-xl">
+        <div className="flex items-center gap-2 mb-6">
+          <Bot size={18} className="text-blue-400" />
+          <h2 className="text-white font-semibold">AI Provider Settings</h2>
+        </div>
+        <p className="text-gray-400 text-sm mb-6">
+          Store API keys for multiple providers. Check "Use this" to select the active one.
+        </p>
+
+        <div className="space-y-4">
+          {AI_PROVIDERS.map(({ id, label, needsUrl }) => {
+            const isActive = activeProvider === id
+            const cfg = providers[id] || {}
+            return (
+              <div key={id} className={`rounded-lg border p-4 transition-colors ${
+                isActive ? 'border-blue-700 bg-blue-900/20' : 'border-gray-700 bg-gray-800'
+              }`}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-white">{label}</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={() => selectActive(isActive ? null : id)}
+                      className="accent-blue-500"
+                    />
+                    <span className="text-xs text-gray-400">Use this</span>
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type={show[id] ? 'text' : 'password'}
+                    value={cfg.key || ''}
+                    onChange={e => setKey(id, e.target.value)}
+                    placeholder="API key"
+                    className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button onClick={() => toggleShow(id)}
+                    className="p-2 text-gray-400 hover:text-white rounded bg-gray-700 hover:bg-gray-600">
+                    {show[id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                {needsUrl && (
+                  <input
+                    type="text"
+                    value={cfg.url || ''}
+                    onChange={e => setUrl(id, e.target.value)}
+                    placeholder="Base URL, e.g. http://localhost:11434/v1"
+                    className="mt-2 w-full bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-6">
+          <button onClick={save}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm font-semibold transition-colors">
+            {saved ? 'Saved!' : <><Save size={14} /> Save AI Settings</>}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -677,7 +1065,7 @@ function PublishDirInline() {
 }
 
 // ─── Main Settings Component ──────────────────────────────────────────────────
-export default function Settings({ onBack, defaultTab = 'templates' }) {
+export default function Settings({ onBack, defaultTab = 'templates', defaultTemplateId = null }) {
   const [tab, setTab] = useState(defaultTab)
 
   return (
@@ -688,12 +1076,12 @@ export default function Settings({ onBack, defaultTab = 'templates' }) {
         </button>
         <h1 className="text-lg font-bold text-white">Settings</h1>
         <div className="flex gap-1 ml-4">
-          {['templates', 'services'].map(t => (
+          {['templates', 'services', 'ai'].map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded text-sm capitalize transition-colors ${
                 tab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}>
-              {t}
+              {t === 'ai' ? 'AI' : t}
             </button>
           ))}
         </div>
@@ -702,8 +1090,9 @@ export default function Settings({ onBack, defaultTab = 'templates' }) {
         <PublishDirInline />
       </header>
 
-      {tab === 'templates' && <TemplatesTab />}
-      {tab === 'services'  && <ServicesTab />}
+      {tab === 'templates' && <TemplatesTab defaultTemplateId={defaultTemplateId} onAiSettings={() => setTab('ai')} />}
+      {tab === 'services'  && <ServicesTab onAiSettings={() => setTab('ai')} />}
+      {tab === 'ai'        && <AiSettingsTab />}
     </div>
   )
 }
