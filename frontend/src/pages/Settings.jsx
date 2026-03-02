@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Trash2, Save, Code2, X, Plus, RefreshCw, Bot, Eye, EyeOff } from 'lucide-react'
 import { api } from '../api'
+import AiChatModal from '../components/AiChatModal'
 
 // ─── Helper: list editor (ports, volumes, env) ───────────────────────────────
 function ListEditor({ label, values, onChange, placeholder }) {
@@ -453,6 +454,7 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
   const [unavailable,   setUnavailable]   = useState(service.unavailable || false)
   const [saved,         setSaved]         = useState(false)
   const [error,         setError]         = useState(null)
+  const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const savedTimer = useRef(null)
 
   useEffect(() => () => clearTimeout(savedTimer.current), [])
@@ -509,6 +511,31 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
 
   return (
     <div className="flex-1 overflow-auto p-6">
+      {aiConfigOpen && (
+        <AiChatModal
+          context={{
+            type: 'configure-service',
+            data: {
+              service: {
+                id: service.id,
+                name,
+                image,
+                container_name: containerName,
+                command,
+                ports,
+                volumes,
+                environment,
+                restart,
+                depends_on: dependsOn,
+                gpu,
+              }
+            }
+          }}
+          allServices={allServices}
+          onClose={() => setAiConfigOpen(false)}
+          onApplied={onSaved}
+        />
+      )}
       {error && (
         <div className="mb-4 p-4 bg-red-900/30 border border-red-600 rounded-lg flex items-start gap-3">
           <div className="flex-1">
@@ -521,7 +548,13 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
       )}
 
       <div className="max-w-xl">
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end gap-2 mb-4">
+          <button
+            onClick={() => setAiConfigOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors"
+          >
+            <Bot size={12} /> Configure this
+          </button>
           <button onClick={pullService} disabled={pulling || isInRunningTemplate}
             title={isInRunningTemplate ? 'Stop the running template before pulling this service' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 disabled:opacity-50 transition-colors">
