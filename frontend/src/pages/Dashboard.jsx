@@ -5,6 +5,15 @@ import { api } from '../api'
 import StatsBar from '../components/StatsBar'
 import AiChatModal from '../components/AiChatModal'
 
+function isAiConfigured(s) {
+  const p = s?.activeAiProvider
+  if (!p) return false
+  const cfg = s?.aiProviders?.[p]
+  if (!cfg?.key?.trim()) return false
+  if (p === 'custom' && !cfg?.url?.trim()) return false
+  return true
+}
+
 // ─── Template Card ────────────────────────────────────────────────────────────
 function TemplateCard({ template, isRunning, anyRunning, onSettings, onError }) {
   const qc = useQueryClient()
@@ -162,18 +171,20 @@ export default function Dashboard({ onSettings }) {
           <div className="mb-4 p-4 bg-red-900/30 border border-red-600 rounded-lg flex items-start gap-3">
             <div className="flex-1 text-red-300 text-sm whitespace-pre-wrap break-words">{deployError}</div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={() => {
-                  const tpl = templates.find(t => t.id === activeTemplateId) || templates[0]
-                  const tplServices = tpl
-                    ? (tpl.serviceIds || []).map(sid => services.find(s => s.id === sid)).filter(Boolean)
-                    : []
-                  setAiFixContext({ type: 'fix-error', data: { error: deployError, services: tplServices } })
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-700 hover:bg-blue-600 rounded text-xs text-white transition-colors"
-              >
-                <Bot size={12} /> Fix it
-              </button>
+              {isAiConfigured(settings) && (
+                <button
+                  onClick={() => {
+                    const tpl = templates.find(t => t.id === activeTemplateId) || templates[0]
+                    const tplServices = tpl
+                      ? (tpl.serviceIds || []).map(sid => services.find(s => s.id === sid)).filter(Boolean)
+                      : []
+                    setAiFixContext({ type: 'fix-error', data: { error: deployError, services: tplServices } })
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-700 hover:bg-blue-600 rounded text-xs text-white transition-colors"
+                >
+                  <Bot size={12} /> Fix it
+                </button>
+              )}
               <button onClick={() => setDeployError(null)} className="text-red-400 hover:text-red-300 mt-0.5">
                 <X size={16} />
               </button>
