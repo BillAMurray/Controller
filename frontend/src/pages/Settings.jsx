@@ -501,8 +501,8 @@ function ServiceDetail({ service, allServices = [], isInRunningTemplate = false,
     setUnavailable(service.unavailable || false)
     const incomingPorts = service.ports || []
     const hostPorts = incomingPorts.map(p => p.split(':')[0]).filter(Boolean)
-    const saved = service.primaryPort
-    setPrimaryPort(saved && hostPorts.includes(saved) ? saved : (hostPorts[0] || ''))
+    const storedPort = service.primaryPort
+    setPrimaryPort(storedPort && hostPorts.includes(storedPort) ? storedPort : (hostPorts[0] || ''))
     setUrlFriendlyName(service.urlFriendlyName || '')
     setSaved(false); setError(null)
   }, [service.id])
